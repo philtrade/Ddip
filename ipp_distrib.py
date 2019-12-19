@@ -1,4 +1,5 @@
 import sys, time, os, re, ipyparallel, torch, atexit, IPython, dataclasses, subprocess, signal
+from collections import OrderedDict
 from typing import Iterable
 from torch.distributed import *
 from IPython.core.magic import Magics, magics_class, cell_magic, line_magic
@@ -34,7 +35,7 @@ class IppCluster():
 
         while engine_wait > 0:
             try:
-                self.dview = self.client[:]
+                self.px_view = self.client[:]
                 engine_wait = 0
             except ipyparallel.error.NoEnginesRegistered as e:
                 Verbose and print(f"Waiting for ipyparallel cluster to be ready .", file=sys.stderr)
@@ -46,18 +47,14 @@ class IppCluster():
     def shutdown(self, *args, **kwargs):
         if self.client:
             subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
-            try:
-                if self._proc and self._proc.poll() == None:
-                    self._proc.wait(10)
-            except subprocess.TimeoutExpired as e: self._proc.send_signal(signal.SIGTERM)
-            self.dview = self.client = self._proc = None
+            if self._proc and self._proc.poll() == None:
+                try: self._proc.wait(10)
+                except subprocess.TimeoutExpired as e: self._proc.send_signal(signal.SIGTERM)
+            self.px_view = self.client = self._proc = None
             Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
         
 '''
 FastAI specific setup
-TODO: * Update fastprogress from pip3 and check this still works
-      * Move this class to a separate file to facilitate unit-testing
-      * Lower priority: make html progress works.
 '''
 class FastaiDDP():
     _original_Learner_pi_:callable = None
@@ -68,10 +65,14 @@ class FastaiDDP():
         learner.to_distributed(torch.cuda.current_device())
 
     @staticmethod
-    def _distrib_Learner():
-        if FastaiDDP._original_Learner_pi_ is None:  # Intercept Learner.__post_init__() to append our own handler
-            FastaiDDP._original_Learner_pi_ = Learner.__post_init__
-            Learner.__post_init__ = FastaiDDP._distributed_Learner_post_init
+    def _distrib_Learner(switch_on:bool):
+        if switch_on:
+            if FastaiDDP._original_Learner_pi_ is None:  # Intercept Learner.__post_init__() to append our own handler
+                FastaiDDP._original_Learner_pi_ = Learner.__post_init__
+                Learner.__post_init__ = FastaiDDP._distributed_Learner_post_init
+        else:
+            if FastaiDDP._original_Learner_pi_ is not None:
+                Learner.__post_init__ = FastaiDDP._original_Learner_pi_
 
     @staticmethod    
     def silent_console(silent:bool=True):
@@ -100,17 +101,22 @@ class FastaiDDP():
         1. Limit standard output to only the RANK 0 process.
         3. Intercept Learner constructor to call to_distributed() after Learner.__post_init__().
         '''
-        if torch.cuda.is_available():
-            defaults.device = torch.device('cuda', torch.cuda.current_device())
+        print(f"Entering fastai_init_ddp(): {os.getpid()}", flush=True)
+        if torch.cuda.is_available(): torch.cuda.set_device(torch.cuda.current_device()) # work-around for the fastai.torch_core.defaults.device maybe out of sync
         silence = rank_distrib() != 0
         FastaiDDP.silent_console(silence) # limit console output to only rank 0 GPU
-        FastaiDDP._distrib_Learner() # Update Learner post-initializer
+        FastaiDDP._distrib_Learner(switch_on=True) # Update Learner post-initializer
+
+    @staticmethod
+    def fastai_finalize_ddp(*args, **kwargs):
+        FastaiDDP.silent_console(False) # Let them sing again
+        FastaiDDP._distrib_Learner(switch_on=False) # Restore Learner post-initializer
 
 DDP_Apps = {
     'fastai' : { 
-        'imports' : [ 'import fastprogress', 'from ippdpp.ipp_distrib import *', 'import torch'],
-        'initializer' : FastaiDDP.fastai_init_ddp, 'watcher' : FastaiDDP.StreamPrinter, 
-        'been_here' : False, }
+        'imports' : [ 'import fastprogress', 'from ippdpp.ipp_distrib import *', 'from fastai.distributed import *', 'import torch'],
+        'initializer' : FastaiDDP.fastai_init_ddp, 'finalizer' : FastaiDDP.fastai_finalize_ddp,
+        'watcher' : FastaiDDP.StreamPrinter, 'been_here' : False, }
 }
 
 DEFAULT_APP='fastai'
@@ -125,24 +131,9 @@ class Ddp():
 
     def __del__(self): self.shutdown_cluster()
 
-    def join(self, gpus:List[int], node_rank=0, world_size=0):
-        '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
-        Returns a list of GPU ids of the group formed.'''
-        if self.ddp_group == gpus: return  # same group or empty group => do nothing
-        n_gpu = len(gpus)
-        assert n_gpu <= len(self.cluster.client), f"More GPU ({gpus}) than ipyparallel engines ({len(self.cluster.client)})"
-        assert max(gpus) < torch.cuda.device_count(), f"Invalid GPU id {max(gpus)}, highest allowed is {torch.cuda.device_count()-1}"
-        self.exit_group()
-
-        Verbose and print(f"Initializing torch distributed group with GPUs {gpus}", flush=True)
-
-        if world_size==0: world_size = n_gpu
-        for rank,gpu in enumerate(gpus):
-            dist_rank = n_gpu * node_rank + rank # see torch/distributed/launch.py
-            self.cluster.client[rank].push(dict(g_rank=dist_rank, l_rank=rank, gpu=gpu, ws=world_size))
-        remotely = '''
+    @staticmethod
+    def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
         import os, torch
-        # from ippdpp.ipp_distrib import Ddp
         os.environ["RANK"] = str(g_rank) # Global rank
         os.environ["LOCAL_RANK"] = str(l_rank) # Local rank
         os.environ["MASTER_ADDR"] = "127.0.0.1"
@@ -151,16 +142,31 @@ class Ddp():
         os.environ["OMP_NUM_THREADS"] = str(1) # See https://github.com/pytorch/pytorch/pull/22501
         torch.cuda.set_device(gpu)
         if ws > 1: torch.distributed.init_process_group(backend='nccl', init_method='env://')
-        '''
-        self.cluster.client[0:n_gpu].execute(remotely)
+
+    def new_group(self, gpus:List[int], node_rank=0, world_size=0):
+        '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
+        Returns a list of GPU ids of the group formed.'''
+        n_gpu = len(gpus)
+        assert n_gpu <= len(self.cluster.client), f"More GPU ({gpus}) than ipyparallel engines ({len(self.cluster.client)})"
+        assert max(gpus) < torch.cuda.device_count(), f"Invalid GPU id {max(gpus)}, highest allowed is {torch.cuda.device_count()-1}"
+
+        Verbose and print(f"Initializing torch distributed group with GPUs {gpus}", flush=True)
+
+        if world_size==0: world_size = n_gpu
+        for rank,gpu in enumerate(gpus):
+            dist_rank = n_gpu * node_rank + rank # see torch/distributed/launch.py
+            self.cluster.client[rank].push(dict(g_rank=dist_rank, l_rank=rank, gpu=gpu, ws=world_size))
+            self.cluster.client[rank].execute('from ippdpp.ipp_distrib import *')
+
+        self.cluster.client[0:n_gpu].execute('Ddp.join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)')
+        self.cluster.px_view = self.cluster.client[0:n_gpu]
         self.ddp_group = gpus
-        return self.ddp_group
 
     def exit_group(self):
         if self.ddp_group is None: return
         Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
         self.cluster.client[0:len(self.ddp_group)].execute('torch.distributed.destroy_process_group()',block=True)
-        self.ddp_group = None
+        self.cluster.px_view = self.ddp_group = None
 
     def shutdown_cluster(self):
         if self.cluster: self.cluster.shutdown()
@@ -183,6 +189,7 @@ class IppDdp(Magics):
         self._in_autoddp = False
         self._app = None
         self._default_output_pause=0.1
+        self._px_targets = None # comma-delimited list of ipcluster engines for parallel execution
         self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
 
     def __del__(self): IppDdp.close()
@@ -197,12 +204,19 @@ class IppDdp(Magics):
         if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP.  Available ones are: {DDP_Apps.keys()}")
             
         if not app['been_here']:
-            dv = self.ddp.cluster.dview # Update to use distributed group, not necessarily the whole view
+            dv = self.ddp.cluster.px_view # shorthand for the DDP process group
             for imp in app['imports']: dv.execute(imp, block=True)
             dv.apply_sync(app['initializer'])
             app['been_here'] = True
             self._app = app
             print(f"Initialized ipyparallel extension for {appname}")
+
+    def app_exit(self):
+        if self._app and self._app['been_here']:
+            dv = self.ddp.cluster.px_view
+            dv.apply_sync(self._app['finalizer'])
+            self._app['been_here'] = False
+            self._app = None
            
     def prepender(self, lines:List[str]):
         '''Prepend a magic marker, then a designated magic to a code block. Thanks to the example at:
@@ -229,7 +243,7 @@ class IppDdp(Magics):
         return self._autoddp
 
     @magic_arguments()  # TODO: --gpus to accept list of integers
-    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', default=['all'], help="comma or space seperated list of GPU ids")
+    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', default=['all'], required=True, help="comma or space seperated list of GPU ids")
     @argument('-A', '--app', dest='appname', type=str, default='fastai')
     @line_magic
     def ddprep(self, line=''):
@@ -239,13 +253,19 @@ class IppDdp(Magics):
 
         # parse --gpus <list>, which can be "all", or comma or space separated list of GPU ids.
         if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
-        else: gpus = [ int(g) for g in re.split(',\s*|\s+', ','.join(args.gpus))]
+        else: gpus = list(OrderedDict.fromkeys([ int(g) for g in re.split(',\s*|\s+', ','.join(args.gpus))]))
 
-        group_gpus = self.ddp.join(gpus=gpus)
-        # Limit default ipyparallel execution to only the set of GPUs in the group.
-        # pxcmd = ["pxconfig", f"--targets {','.join([str(g) for g in group_gpus])}"]
-        # Verbose and print(f"After join(), will now run line magic %{pxcmd}")
-        # self.shell.run_line_magic(*pxcmd) # seems somewhat buggy, debug later.
+        if self.ddp.ddp_group == gpus:
+            print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
+            return  # same group or empty group => do nothing
+        
+        if self.ddp.ddp_group: # In reverse order: clean up the app first, then the DDP group
+            self.app_exit()
+            self._px_targets = None
+            self.ddp.exit_group()
+
+        self.ddp.new_group(gpus=gpus)
+        self._px_targets = f"--targets {','.join(map(str, range(len(gpus))))}"
         self.app_init(args.appname)
  
     @magic_arguments()
@@ -255,10 +275,10 @@ class IppDdp(Magics):
         "%%ddpx - Parallel execution on cluster, allows transient output be displayed"
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         if not self.ddp.ddp_group: self.ddprep()
-
         args = parse_argstring(self.ddpx, line)
 
-        ar = self.shell.run_cell_magic("px", "--noblock", cell) # use parallel_execute?
+        px_args=f"--noblock {self._px_targets}"
+        ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
         watching = True # args.watch == 'watch'
 
         # Use StreamPrinter as the default to track asynch output progress.

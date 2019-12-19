@@ -83,16 +83,6 @@ class FastaiDDP():
             dataclasses.dataclass, text, text.data, core]
         for c in cls_list: c.master_bar, c.progress_bar = mbar,pbar
 
-    class StreamPrinter():
-        ''' Each invocation prints from where it left off till the end of the current output '''
-        def __init__(self, streams, *args, **kwargs):
-            self._counts = [0] * len(streams)
-        def __call__(self, streams, *args, **kwargs):
-            for i, st in enumerate(streams):
-                if (len(st) > self._counts[i]):
-                    print(st[self._counts[i]:], end='', flush=True)
-                    self._counts[i] = len(st)
-
     @staticmethod
     def fastai_init_ddp(*args, **kwargs):
         '''Do a few housekeeping:
@@ -116,7 +106,7 @@ DDP_Apps = {
     'fastai' : { 
         'imports' : [ 'import fastprogress', 'from ippdpp.ipp_distrib import *', 'from fastai.distributed import *', 'import torch'],
         'initializer' : FastaiDDP.fastai_init_ddp, 'finalizer' : FastaiDDP.fastai_finalize_ddp,
-        'watcher' : FastaiDDP.StreamPrinter, 'been_here' : False, }
+        'been_here' : False, }
 }
 
 DEFAULT_APP='fastai'
@@ -198,6 +188,16 @@ class IppDdp(Magics):
     def close(cls):
         if cls._instance: cls._instance.ddp.shutdown_cluster()
         cls._instance = None
+
+    class StreamPrinter():
+        ''' Each invocation prints from where it left off till the end of the current output '''
+        def __init__(self, streams, *args, **kwargs):
+            self._counts = [0] * len(streams)
+        def __call__(self, streams, *args, **kwargs):
+            for i, st in enumerate(streams):
+                if (len(st) > self._counts[i]):
+                    print(st[self._counts[i]:], end='', flush=True)
+                    self._counts[i] = len(st)
     
     def app_init(self, appname:str):
         app = DDP_Apps.get(appname, None)
@@ -243,54 +243,60 @@ class IppDdp(Magics):
         return self._autoddp
 
     @magic_arguments()  # TODO: --gpus to accept list of integers
-    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', default=['all'], required=True, help="comma or space seperated list of GPU ids")
-    @argument('-A', '--app', dest='appname', type=str, default='fastai')
+    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
+    @argument('-a', '--app', dest='appname', type=str, default='fastai')
+    @argument('-d', '--debug', nargs='?', type=lambda x: (str(x).lower() == 'true'))
+    @argument('-v', '--verbose', nargs='?', type=lambda x: (str(x).lower() == 'true'))
     @line_magic
     def ddprep(self, line=''):
         "%ddprep -- line magic to setup/tear down the cluster as a DDP training group, app-specific handling of object"
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         args = parse_argstring(self.ddprep, line)
 
-        # parse --gpus <list>, which can be "all", or comma or space separated list of GPU ids.
-        if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
-        else: gpus = list(OrderedDict.fromkeys([ int(g) for g in re.split(',\s*|\s+', ','.join(args.gpus))]))
+        global Debug # Monkey hack until  classes have their own module namespaces and own debug/verbose flags
+        if Debug != args.debug: Debug = args.debug
+        global Verbose
+        if Verbose != args.verbose: Verbose = args.verbose
 
-        if self.ddp.ddp_group == gpus:
-            print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
-            return  # same group or empty group => do nothing
+        if args.gpus:
+            if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
+            else: gpus = list(OrderedDict.fromkeys([ int(g) for g in re.split(',\s*|\s+', ','.join(args.gpus))]))
+
+            if self.ddp.ddp_group == gpus:
+                print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
+                return  # same group or empty group => do nothing
+            
+            if self.ddp.ddp_group: # In reverse order: clean up the app first, then the DDP group
+                self.app_exit()
+                self._px_targets = None
+                self.ddp.exit_group()
+
+            self.ddp.new_group(gpus=gpus)
+            self._px_targets = f"--targets {','.join(map(str, range(len(gpus))))}"
+            self.app_init(args.appname)
         
-        if self.ddp.ddp_group: # In reverse order: clean up the app first, then the DDP group
-            self.app_exit()
-            self._px_targets = None
-            self.ddp.exit_group()
-
-        self.ddp.new_group(gpus=gpus)
-        self._px_targets = f"--targets {','.join(map(str, range(len(gpus))))}"
-        self.app_init(args.appname)
  
     @magic_arguments()
-    @argument('watch', type=str, nargs='?', default='', help='Print progress output from asynchronous calls.')
+    @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
+    # @argument('watch', type=str, nargs='?', default='', help='Print progress output from asynchronous calls.')
     @cell_magic
     def ddpx(self, line, cell): # CAN WATCH BE CONTEXT SENSITIVE?
         "%%ddpx - Parallel execution on cluster, allows transient output be displayed"
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
+        Verbose and print(f"Invoking cell magic: %%ddpx {line}", file=sys.stderr, flush=True)
         if not self.ddp.ddp_group: self.ddprep()
         args = parse_argstring(self.ddpx, line)
 
         px_args=f"--noblock {self._px_targets}"
         ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
-        watching = True # args.watch == 'watch'
 
-        # Use StreamPrinter as the default to track asynch output progress.
-        # and save all these "watching" boolean logic
-        if watching and self._app and 'watcher' in self._app: f = self._app['watcher'](ar.stdout)
-        else: f = print
-        
-        if watching:
+        watcher = self._app.get('watcher', IppDdp.StreamPrinter)(ar.stdout) if (not args.quiet) and self._app else None
+
+        if watcher:
             while not ar.ready(): # Simulate wait on blocking execution
-                f(ar.stdout)
+                watcher(ar.stdout)
                 time.sleep(self._default_output_pause)
-            f(ar.stdout)
+            watcher(ar.stdout)
 
         r = ar.get() # Blocks
         ar.display_outputs()

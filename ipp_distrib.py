@@ -145,17 +145,19 @@ class Ddp():
         if world_size==0: world_size = n_gpu
         for rank,gpu in enumerate(gpus):
             dist_rank = n_gpu * node_rank + rank # see torch/distributed/launch.py
-            self.cluster.client[rank].push(dict(g_rank=dist_rank, l_rank=rank, gpu=gpu, ws=world_size))
-            self.cluster.client[rank].execute('from ippdpp.ipp_distrib import *')
+            self.cluster.client[gpu].push(dict(g_rank=dist_rank, l_rank=rank, gpu=gpu, ws=world_size))
+            # self.cluster.client[rank].execute('from ippdpp.ipp_distrib import *')
 
-        self.cluster.client[0:n_gpu].execute('Ddp.join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)')
-        self.cluster.px_view = self.cluster.client[0:n_gpu]
+        # ipyparallel client[] accepts list of ints as slice indices.
+        self.cluster.px_view = self.cluster.client[gpus]
+        self.cluster.px_view.execute('from ippdpp.ipp_distrib import *')
+        self.cluster.px_view.execute('Ddp.join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)')
         self.ddp_group = gpus
 
     def exit_group(self):
         if self.ddp_group is None: return
         Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
-        self.cluster.client[0:len(self.ddp_group)].execute('torch.distributed.destroy_process_group()',block=True)
+        self.cluster.px_view.execute('torch.distributed.destroy_process_group()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
     def shutdown_cluster(self):
@@ -272,7 +274,7 @@ class IppDdp(Magics):
                 self.ddp.exit_group()
 
             self.ddp.new_group(gpus=gpus)
-            self._px_targets = f"--targets {','.join(map(str, range(len(gpus))))}"
+            self._px_targets = f"--targets {','.join(map(str, gpus))}"
             self.app_init(args.appname)
         
  

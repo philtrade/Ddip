@@ -25,7 +25,7 @@ class IppCluster():
     cid = "ippdpp_c"
     def __init__(self, n:int=0, engine_wait:float=15.0, **kwargs):
         "Launch the ipyparallel cluster using 'ipcluster start', then connect via Client()"
-        popen_cmd = ["ipcluster", "start", f"--cluster-id={IppCluster.cid}"]
+        popen_cmd = ["ipcluster", "start", f"--cluster-id={IppCluster.cid}", "--daemonize"]
         if n > 0: popen_cmd.append(f"--n={n}")
 
         self._proc = subprocess.Popen(popen_cmd) # Ignore stdout and stderr from ipcluster
@@ -47,23 +47,17 @@ class IppCluster():
 
     def interrupt_engines(self, eids=None):
         """Send SIGINT to one or more engines"""
-        _debug(f"Interrupting engines {eids}")
-        if eids is None:
-            eids = self.pid_map.keys()
-        elif isinstance(eids, int):
-            eids = [eids]
-        for eid in eids:
-            pid = self.pid_map[eid]
-            os.kill(pid, signal.SIGINT)
+        if eids is None: eids = self.pid_map.keys()
+        elif isinstance(eids, int): eids = [eids]
+        for eid in eids: os.kill(self.pid_map[eid], signal.SIGINT)
 
     def shutdown(self, *args, **kwargs):
-        if self.client:
-            subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
-            if self._proc and self._proc.poll() == None:
-                try: self._proc.wait(10)
-                except subprocess.TimeoutExpired as e: self._proc.send_signal(signal.SIGTERM)
-            self.px_view = self.client = self._proc = None
-            Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
+        subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
+        if self._proc and self._proc.poll() == None:
+            try: self._proc.wait(10)
+            except subprocess.TimeoutExpired as e: self._proc.send_signal(signal.SIGTERM)
+        self.px_view = self.client = self._proc = None
+        Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
         
 '''
 FastAI specific setup
@@ -320,14 +314,14 @@ class IppDdp(Magics):
                     watcher(ar.stdout)
                     time.sleep(self._default_output_pause)
                 watcher(ar.stdout)
+                clear_output()
 
-            r = ar.get() # Blocks
+            r = ar.get() # Blocks till completion
         except KeyboardInterrupt:
-            _debug("Received interrupt.  Sending to engines...")
+            Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
             self.ddp.cluster.interrupt_engines(self.ddp.ddp_group)
-            
-        ar.display_outputs()
 
+        ar.display_outputs()
         return r
 
 def unload_ipython_extension(ipython):

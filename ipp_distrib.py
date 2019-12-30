@@ -185,12 +185,14 @@ class IppDdp(Magics):
     "An helper object to execution on an ipyparallel cluster, one engine per GPU."
     _instance = None # A singleton
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super(IppDdp,cls).__new__(cls,*args,**kwargs)
+        if cls._instance is None: cls._instance = super(IppDdp,cls).__new__(cls,*args,**kwargs)
         return cls._instance
 
     def __init__(self, shell:IPython.InteractiveShell=None, **kwargs):
         super(IppDdp, self).__init__(shell=shell) # will setup self.shell
+        self._init(**kwargs)
+
+    def _init(self, **kwargs):
         self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
         self._in_autoddp = False
         self._app = None
@@ -261,6 +263,7 @@ class IppDdp(Magics):
     @magic_arguments()  # TODO: --gpus to accept list of integers
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', type=str, default='fastai')
+    @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart all engine processes.")
     @argument('-d', '--debug', nargs='?', type=lambda x: (str(x).lower() == 'true'))
     @argument('-v', '--verbose', nargs='?', type=lambda x: (str(x).lower() == 'true'))
     @line_magic
@@ -270,9 +273,18 @@ class IppDdp(Magics):
         args = parse_argstring(self.ddprep, line)
 
         global Debug # Monkey hack until  classes have their own module namespaces and own debug/verbose flags
-        if Debug != args.debug: Debug = args.debug
+        Debug = args.debug
         global Verbose
-        if Verbose != args.verbose: Verbose = args.verbose
+        Verbose = args.verbose
+
+        if args.restart:
+            if self.ddp:
+                Verbose and print("%ddpx shutting down cluster....", flush=True, file=sys.stderr)
+                self.ddp.shutdown_cluster()
+                Verbose and print("pausing 3 seconds before restarting cluster....", flush=True, file=sys.stderr)
+                self.ddp = None
+                time.sleep(3.0)
+            self._init()
 
         if args.gpus:
             if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
@@ -294,7 +306,6 @@ class IppDdp(Magics):
  
     @magic_arguments()
     @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    # @argument('watch', type=str, nargs='?', default='', help='Print progress output from asynchronous calls.')
     @cell_magic
     def ddpx(self, line, cell): # CAN WATCH BE CONTEXT SENSITIVE?
         "%%ddpx - Parallel execution on cluster, allows transient output be displayed"

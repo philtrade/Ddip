@@ -28,7 +28,10 @@ class IppCluster():
         popen_cmd = ["ipcluster", "start", f"--cluster-id={IppCluster.cid}", "--daemonize"]
         if n > 0: popen_cmd.append(f"--n={n}")
 
-        self._proc = subprocess.Popen(popen_cmd) # Ignore stdout and stderr from ipcluster
+        cluster_proc = subprocess.Popen(popen_cmd) # Ignore stdout and stderr from ipcluster
+        try: cluster_proc.wait(10)
+        except subprocess.TimeoutExpired as e: raise TimeoutError("Timed out launching ipcluster {popen_cmd}: {e}")
+
         # Connect clients/views to engines, and load iPython cell magics
         try: self.client = ipyparallel.Client(timeout=engine_wait,cluster_id=f"{IppCluster.cid}")
         except (IOError,TimeoutError) as e: raise Exception(f"ipyparallel Client() failed: {e}")
@@ -38,6 +41,7 @@ class IppCluster():
                 self.px_view = self.client[:]
                 engine_wait = 0
                 self.pid_map = self.px_view.apply_async(os.getpid).get_dict()
+                self.ppid = self.client[0].apply_sync(os.getppid)
             except ipyparallel.error.NoEnginesRegistered as e:
                 Verbose and print(f"Waiting for ipyparallel cluster to be ready .", file=sys.stderr)
                 time.sleep(4)
@@ -52,11 +56,11 @@ class IppCluster():
         for eid in eids: os.kill(self.pid_map[eid], signal.SIGINT)
 
     def shutdown(self, *args, **kwargs):
+        if self.ppid is None: return
         subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
-        if self._proc and self._proc.poll() == None:
-            try: self._proc.wait(10)
-            except subprocess.TimeoutExpired as e: self._proc.send_signal(signal.SIGTERM)
-        self.px_view = self.client = self._proc = None
+        try: os.kill(self.ppid, signal.SIGINT) # Make sure it died
+        except ProcessLookupError: pass
+        self.px_view = self.client = self.pid_map = self.ppid = None
         Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
         
 '''
@@ -114,7 +118,7 @@ DDP_Apps = {
     'fastai' : { 
         'imports' : [ 'import fastprogress', 'from ippdpp.ipp_distrib import *', 'from fastai.distributed import *', 'import torch'],
         'initializer' : FastaiDDP.fastai_init_ddp, 'finalizer' : FastaiDDP.fastai_finalize_ddp,
-        'been_here' : False, }
+        }
 }
 
 DEFAULT_APP='fastai'
@@ -182,31 +186,6 @@ from IPython.core.magic_arguments import argument, magic_arguments, parse_argstr
 
 @magics_class
 class IppDdp(Magics):
-    "An helper object to execution on an ipyparallel cluster, one engine per GPU."
-    _instance = None # A singleton
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None: cls._instance = super(IppDdp,cls).__new__(cls,*args,**kwargs)
-        return cls._instance
-
-    def __init__(self, shell:IPython.InteractiveShell=None, **kwargs):
-        super(IppDdp, self).__init__(shell=shell) # will setup self.shell
-        self._init(**kwargs)
-
-    def _init(self, **kwargs):
-        self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
-        self._in_autoddp = False
-        self._app = None
-        self._default_output_pause=0.1
-        self._px_targets = None # comma-delimited list of ipcluster engines for parallel execution
-        self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
-
-    def __del__(self): IppDdp.close()
-
-    @classmethod
-    def close(cls):
-        if cls._instance: cls._instance.ddp.shutdown_cluster()
-        cls._instance = None
-
     class StreamPrinter():
         ''' Each invocation prints from where it left off till the end of the current output '''
         def __init__(self, streams, *args, **kwargs):
@@ -216,24 +195,54 @@ class IppDdp(Magics):
                 if (len(st) > self._counts[i]):
                     print(st[self._counts[i]:], end='', flush=True)
                     self._counts[i] = len(st)
+
+    "An helper object to execution on an ipyparallel cluster, one engine per GPU."
+    _instance = None # A singleton
+    _default_streaming_pause = 0.1
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None: cls._instance = super(IppDdp,cls).__new__(cls,*args,**kwargs)
+        return cls._instance
+
+    def __init__(self, shell:IPython.InteractiveShell=None, **kwargs):
+        super(IppDdp, self).__init__(shell=shell) # will setup self.shell
+        self._streaming_pause = IppDdp._default_streaming_pause
+        self._init_ddp_cluster(**kwargs)
+
+    def _init_ddp_cluster(self, **kwargs):
+        self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
+        self._in_autoddp = False
+        self._app = None
+        self._px_targets = None # comma-delimited list of ipcluster engines for parallel execution
+        self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
+
+    def __del__(self): IppDdp.close()
+
+    @classmethod
+    def close(cls):
+        if cls._instance: cls._instance.ddp.shutdown_cluster()
+        cls._instance = None
     
     def app_init(self, appname:str):
         app = DDP_Apps.get(appname, None)
         if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP.  Available ones are: {DDP_Apps.keys()}")
-            
-        if not app['been_here']:
+        
+        if (self._app is not None) and (not self._app == app):
+            self.app_exit()
+            self._app = None
+
+        if not self._app:
             dv = self.ddp.cluster.px_view # shorthand for the DDP process group
             for imp in app['imports']: dv.execute(imp, block=True)
             dv.apply_sync(app['initializer'])
-            app['been_here'] = True
             self._app = app
             print(f"Initialized ipyparallel extension for {appname}")
+        else:
+            print(f"Already initialized ipyparallel extension for {appname}")
 
     def app_exit(self):
-        if self._app and self._app['been_here']:
+        if self._app:
             dv = self.ddp.cluster.px_view
             dv.apply_sync(self._app['finalizer'])
-            self._app['been_here'] = False
             self._app = None
            
     def prepender(self, lines:List[str]):
@@ -260,6 +269,11 @@ class IppDdp(Magics):
         print(f"Auto parallel execution: {self._autoddp if self._autoddp else 'Off'}")
         return self._autoddp
 
+    def _exit_ddp_group(self):
+        self.app_exit() # In reverse order: clean up the app first, then the DDP group
+        self._px_targets = None
+        self.ddp.exit_group()
+
     @magic_arguments()  # TODO: --gpus to accept list of integers
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', type=str, default='fastai')
@@ -278,13 +292,14 @@ class IppDdp(Magics):
         Verbose = args.verbose
 
         if args.restart:
-            if self.ddp:
+            if self.ddp and self.ddp.ddp_group:
                 Verbose and print("%ddpx shutting down cluster....", flush=True, file=sys.stderr)
+                self._exit_ddp_group()
                 self.ddp.shutdown_cluster()
                 Verbose and print("pausing 3 seconds before restarting cluster....", flush=True, file=sys.stderr)
                 self.ddp = None
                 time.sleep(3.0)
-            self._init()
+            self._init_ddp_cluster()
 
         if args.gpus:
             if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
@@ -294,10 +309,7 @@ class IppDdp(Magics):
                 print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
                 return  # same group or empty group => do nothing
             
-            if self.ddp.ddp_group: # In reverse order: clean up the app first, then the DDP group
-                self.app_exit()
-                self._px_targets = None
-                self.ddp.exit_group()
+            if self.ddp.ddp_group: self._exit_ddp_group()
 
             self.ddp.new_group(gpus=gpus)
             self._px_targets = f"--targets {','.join(map(str, gpus))}"
@@ -323,7 +335,7 @@ class IppDdp(Magics):
             if watcher:
                 while not ar.ready(): # Simulate wait on blocking execution
                     watcher(ar.stdout)
-                    time.sleep(self._default_output_pause)
+                    time.sleep(self._streaming_pause)
                 watcher(ar.stdout)
                 clear_output()
 
@@ -341,5 +353,5 @@ def unload_ipython_extension(ipython):
 def load_ipython_extension(ipython:IPython.InteractiveShell):
     __iddpM = IppDdp(ipython)
     atexit.register(unload_ipython_extension, ipython)
-    ipython.push({'ddpmagic':__iddpM, 'ddp':__iddpM.ddp, 'ddprc':__iddpM.ddp.cluster.client})
+    ipython.push({'ddpmagic':__iddpM})
     ipython.register_magics(__iddpM)

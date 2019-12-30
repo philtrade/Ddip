@@ -10,7 +10,7 @@ from fastai import basic_data, basic_train, core, text
 from fastai.basic_train import Learner
 import fastprogress
 from ipyparallel import AsyncResult
-from fastprogress.fastprogress import master_bar, progress_bar, force_console_behavior, IN_NOTEBOOK, isnotebook
+from fastprogress.fastprogress import master_bar, progress_bar, force_console_behavior, IN_NOTEBOOK
 
 __all__ = ['IppDdp', 'IppCluster', 'Ddp', 'DDP_Apps', 'FastaiDDP']
 
@@ -37,12 +37,24 @@ class IppCluster():
             try:
                 self.px_view = self.client[:]
                 engine_wait = 0
+                self.pid_map = self.px_view.apply_async(os.getpid).get_dict()
             except ipyparallel.error.NoEnginesRegistered as e:
                 Verbose and print(f"Waiting for ipyparallel cluster to be ready .", file=sys.stderr)
                 time.sleep(4)
                 engine_wait -= 4
 
     def __del__(self): self.shutdown()
+
+    def interrupt_engines(self, eids=None):
+        """Send SIGINT to one or more engines"""
+        _debug(f"Interrupting engines {eids}")
+        if eids is None:
+            eids = self.pid_map.keys()
+        elif isinstance(eids, int):
+            eids = [eids]
+        for eid in eids:
+            pid = self.pid_map[eid]
+            os.kill(pid, signal.SIGINT)
 
     def shutdown(self, *args, **kwargs):
         if self.client:
@@ -99,8 +111,10 @@ class FastaiDDP():
 
     @staticmethod
     def fastai_finalize_ddp(*args, **kwargs):
-        FastaiDDP.silent_console(False) # Let them sing again
+        import fastai.torch_core
         FastaiDDP._distrib_Learner(switch_on=False) # Restore Learner post-initializer
+        FastaiDDP.silent_console(False) # Let them sing again
+        fastai.torch_core.defaults.device = 'cpu'
 
 DDP_Apps = {
     'fastai' : { 
@@ -133,6 +147,12 @@ class Ddp():
         torch.cuda.set_device(gpu)
         if ws > 1: torch.distributed.init_process_group(backend='nccl', init_method='env://')
 
+    @staticmethod
+    def exit_group_single():
+        for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]: os.environ.pop(i)
+        torch.distributed.destroy_process_group()
+        torch.cuda.empty_cache()
+
     def new_group(self, gpus:List[int], node_rank=0, world_size=0):
         '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
@@ -157,7 +177,7 @@ class Ddp():
     def exit_group(self):
         if self.ddp_group is None: return
         Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
-        self.cluster.px_view.execute('torch.distributed.destroy_process_group()',block=True)
+        self.cluster.px_view.execute('Ddp.exit_group_single()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
     def shutdown_cluster(self):
@@ -290,17 +310,22 @@ class IppDdp(Magics):
         args = parse_argstring(self.ddpx, line)
 
         px_args=f"--noblock {self._px_targets}"
-        ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
+        try:
+            ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
 
-        watcher = self._app.get('watcher', IppDdp.StreamPrinter)(ar.stdout) if (not args.quiet) and self._app else None
+            watcher = self._app.get('watcher', IppDdp.StreamPrinter)(ar.stdout) if (not args.quiet) and self._app else None
 
-        if watcher:
-            while not ar.ready(): # Simulate wait on blocking execution
+            if watcher:
+                while not ar.ready(): # Simulate wait on blocking execution
+                    watcher(ar.stdout)
+                    time.sleep(self._default_output_pause)
                 watcher(ar.stdout)
-                time.sleep(self._default_output_pause)
-            watcher(ar.stdout)
 
-        r = ar.get() # Blocks
+            r = ar.get() # Blocks
+        except KeyboardInterrupt:
+            _debug("Received interrupt.  Sending to engines...")
+            self.ddp.cluster.interrupt_engines(self.ddp.ddp_group)
+            
         ar.display_outputs()
 
         return r

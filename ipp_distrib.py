@@ -21,43 +21,42 @@ def _debug(*args, **kwargs):
     if Debug: print(*args, file=sys.stderr, **kwargs)
 
 class IppCluster():
-    "Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."
+    """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
     cid = "ippdpp_c"
     def __init__(self, n:int=0, engine_wait:float=15.0, **kwargs):
-        "Launch the ipyparallel cluster using 'ipcluster start', then connect via Client()"
         popen_cmd = ["ipcluster", "start", f"--cluster-id={IppCluster.cid}", "--daemonize"]
         if n > 0: popen_cmd.append(f"--n={n}")
 
         cluster_proc = subprocess.Popen(popen_cmd) # Ignore stdout and stderr from ipcluster
         try: cluster_proc.wait(10)
-        except subprocess.TimeoutExpired as e: raise TimeoutError("Timed out launching ipcluster {popen_cmd}: {e}")
+        except subprocess.TimeoutExpired as e: raise TimeoutError("Timed out {popen_cmd}: {e}")
 
-        # Connect clients/views to engines, and load iPython cell magics
         try: self.client = ipyparallel.Client(timeout=engine_wait,cluster_id=f"{IppCluster.cid}")
         except (IOError,TimeoutError) as e: raise Exception(f"ipyparallel Client() failed: {e}")
-
+        print(f"Connecting to ipyparallel cluster.", file=sys.stderr, end='', flush=True)
         while engine_wait > 0:
             try:
-                self.px_view = self.client[:]
+                self.px_view = self.client[:] # This will turn on ipyparallel's ipython line and cell magics
                 engine_wait = 0
                 pm = self.px_view.apply_async(os.getpid).get_dict()
                 self.e_pids = [ pm[k] for k in sorted(pm) ]
                 self.e_ppid = self.client[0].apply_sync(os.getppid)
             except ipyparallel.error.NoEnginesRegistered as e:
-                Verbose and print(f"Waiting for ipyparallel cluster to be ready .", file=sys.stderr)
-                time.sleep(4)
-                engine_wait -= 4
+                print('.', file=sys.stderr, end='', flush=True)
+                time.sleep(1)
+                engine_wait -= 1
 
     def __del__(self): self.shutdown()
 
     def interrupt_engines(self, eids:List[int]):
-        """Send SIGINT to one or more engines"""
+        '''Send SIGINT to a list of ipyparallel engines'''
         for i in eids: i < len(self.e_pids) and os.kill(self.e_pids[i], signal.SIGINT)
 
     def shutdown(self):
-        if self.e_ppid is None: return
+        '''Shutdown ipyparallel cluster -- this will kill all processes started by the 'ipcluster start' command.'''
         subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
-        try: os.kill(self.e_ppid, signal.SIGINT) # Make sure it died
+        try:
+            if self.e_ppid: os.kill(self.e_ppid, signal.SIGINT) # SIGINT to the parent process of the engines (but not directly to the engines per se), will kill the engines.
         except ProcessLookupError: pass
         self.px_view = self.client = self.e_pids = self.e_ppid = None
         Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
@@ -171,6 +170,9 @@ class Ddp():
         self.cluster.px_view.execute('Ddp.join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)')
         self.ddp_group = gpus
 
+    def gpus_str(self):
+        return ','.join(map(str, self.ddp_group))
+
     def exit_group(self):
         if self.ddp_group is None: return
         Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
@@ -178,8 +180,10 @@ class Ddp():
         self.cluster.px_view = self.ddp_group = None
 
     def shutdown_cluster(self):
-        if self.cluster: self.cluster.shutdown()
-        self.ddp_group = self.cluster = None
+        self.exit_group()
+        if self.cluster:
+            self.cluster.shutdown()
+            self.cluster = None
 
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
 
@@ -208,9 +212,9 @@ class IppDdp(Magics):
         self._init_ddp_cluster(**kwargs)
 
     def _init_ddp_cluster(self, **kwargs):
+        '''Initialize a new DDP group, reset states of ipython magic, and associated applicaiton to None.'''
         self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
         self._app = None
-        self._px_targets = None # comma-delimited list of ipcluster engines for parallel execution
         self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
 
     def __del__(self): IppDdp.close()
@@ -261,12 +265,7 @@ class IppDdp(Magics):
         print(f"Auto parallel execution: {self._autoddp if self._autoddp else 'Off'}")
         return self._autoddp
 
-    def _exit_ddp_group(self):
-        self.app_exit() # In reverse order: clean up the app first, then the DDP group
-        self._px_targets = None
-        self.ddp.exit_group()
-
-    @magic_arguments()  # TODO: --gpus to accept list of integers
+    @magic_arguments()
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', type=str, default='fastai')
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart all engine processes.")
@@ -284,12 +283,12 @@ class IppDdp(Magics):
         Verbose = args.verbose
 
         if args.restart:
-            if self.ddp and self.ddp.ddp_group:
+            if self.ddp:
                 Verbose and print("%ddpx shutting down cluster....", flush=True, file=sys.stderr)
-                self._exit_ddp_group()
+                self.app_exit() # In reverse order: clean up the app first, then the DDP group
                 self.ddp.shutdown_cluster()
                 Verbose and print("pausing 3 seconds before restarting cluster....", flush=True, file=sys.stderr)
-                self.ddp = None
+                # self.ddp = None
                 time.sleep(3.0)
             self._init_ddp_cluster()
 
@@ -297,14 +296,15 @@ class IppDdp(Magics):
             if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
             else: gpus = list(OrderedDict.fromkeys([ int(g) for g in re.split(',\s*|\s+', ','.join(args.gpus))]))
 
-            if self.ddp.ddp_group == gpus:
+            if self.ddp.ddp_group == gpus: # Group desired is already there?
                 print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
                 return  # same group or empty group => do nothing
             
-            if self.ddp.ddp_group: self._exit_ddp_group()
+            if self.ddp.ddp_group: # Exit old DDP group if exists
+                self.app_exit()
+                self.ddp.exit_group()
 
             self.ddp.new_group(gpus=gpus)
-            self._px_targets = f"--targets {','.join(map(str, gpus))}"
             self.app_init(args.appname)
         
  
@@ -314,11 +314,11 @@ class IppDdp(Magics):
     def ddpx(self, line, cell): # CAN WATCH BE CONTEXT SENSITIVE?
         "%%ddpx - Parallel execution on cluster, allows transient output be displayed"
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
+        assert self.ddp and self.ddp.ddp_group, "%%ddpx: DDP group does not exist yet.  Have you run %ddprep?"
         Verbose and print(f"Invoking cell magic: %%ddpx {line}", file=sys.stderr, flush=True)
-        if not self.ddp.ddp_group: self.ddprep()
         args = parse_argstring(self.ddpx, line)
 
-        px_args=f"--noblock {self._px_targets}"
+        px_args=f"--noblock --targets {self.ddp.gpus_str()}"
         try:
             ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
 

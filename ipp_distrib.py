@@ -1,6 +1,6 @@
 import sys, time, os, re, ipyparallel, torch, atexit, IPython, dataclasses, subprocess, signal
 from collections import OrderedDict
-from typing import Iterable
+from typing import List
 from torch.distributed import *
 from IPython.core.magic import Magics, magics_class, cell_magic, line_magic
 from IPython.core.display import clear_output
@@ -40,8 +40,9 @@ class IppCluster():
             try:
                 self.px_view = self.client[:]
                 engine_wait = 0
-                self.pid_map = self.px_view.apply_async(os.getpid).get_dict()
-                self.ppid = self.client[0].apply_sync(os.getppid)
+                pm = self.px_view.apply_async(os.getpid).get_dict()
+                self.e_pids = [ pm[k] for k in sorted(pm) ]
+                self.e_ppid = self.client[0].apply_sync(os.getppid)
             except ipyparallel.error.NoEnginesRegistered as e:
                 Verbose and print(f"Waiting for ipyparallel cluster to be ready .", file=sys.stderr)
                 time.sleep(4)
@@ -49,18 +50,16 @@ class IppCluster():
 
     def __del__(self): self.shutdown()
 
-    def interrupt_engines(self, eids=None):
+    def interrupt_engines(self, eids:List[int]):
         """Send SIGINT to one or more engines"""
-        if eids is None: eids = self.pid_map.keys()
-        elif isinstance(eids, int): eids = [eids]
-        for eid in eids: os.kill(self.pid_map[eid], signal.SIGINT)
+        for i in eids: i < len(self.e_pids) and os.kill(self.e_pids[i], signal.SIGINT)
 
-    def shutdown(self, *args, **kwargs):
-        if self.ppid is None: return
+    def shutdown(self):
+        if self.e_ppid is None: return
         subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
-        try: os.kill(self.ppid, signal.SIGINT) # Make sure it died
+        try: os.kill(self.e_ppid, signal.SIGINT) # Make sure it died
         except ProcessLookupError: pass
-        self.px_view = self.client = self.pid_map = self.ppid = None
+        self.px_view = self.client = self.e_pids = self.e_ppid = None
         Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
         
 '''
@@ -94,7 +93,7 @@ class FastaiDDP():
         for c in cls_list: c.master_bar, c.progress_bar = mbar,pbar
 
     @staticmethod
-    def fastai_init_ddp(*args, **kwargs):
+    def fastai_init_ddp():
         '''Do a few housekeeping:
         0. Set defaults.device to the proper device, due to a bug in fastai.torch_core.py
            where the defaults.device is initialized without regard to the curren cuda device.
@@ -108,7 +107,7 @@ class FastaiDDP():
         FastaiDDP._distrib_Learner(switch_on=True) # Update Learner post-initializer
 
     @staticmethod
-    def fastai_finalize_ddp(*args, **kwargs):
+    def fastai_finalize_ddp():
         import fastai.torch_core
         FastaiDDP._distrib_Learner(switch_on=False) # Restore Learner post-initializer
         FastaiDDP.silent_console(False) # Let them sing again
@@ -210,7 +209,6 @@ class IppDdp(Magics):
 
     def _init_ddp_cluster(self, **kwargs):
         self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
-        self._in_autoddp = False
         self._app = None
         self._px_targets = None # comma-delimited list of ipcluster engines for parallel execution
         self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
@@ -226,11 +224,9 @@ class IppDdp(Magics):
         app = DDP_Apps.get(appname, None)
         if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP.  Available ones are: {DDP_Apps.keys()}")
         
-        if (self._app is not None) and (not self._app == app):
-            self.app_exit()
-            self._app = None
+        if self._app != app: self.app_exit()
 
-        if not self._app:
+        if self._app is None:
             dv = self.ddp.cluster.px_view # shorthand for the DDP process group
             for imp in app['imports']: dv.execute(imp, block=True)
             dv.apply_sync(app['initializer'])
@@ -241,17 +237,13 @@ class IppDdp(Magics):
 
     def app_exit(self):
         if self._app:
-            dv = self.ddp.cluster.px_view
-            dv.apply_sync(self._app['finalizer'])
+            self.ddp.cluster.px_view.apply_sync(self._app['finalizer'])
             self._app = None
            
     def prepender(self, lines:List[str]):
-        '''Prepend a magic marker, then a designated magic to a code block. Thanks to the example at:
-            https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py
-        '''
-        # Support filtering, by regex or function hooks? A functor class?
-        if lines and self._autoddp:
-            if not lines[0].startswith('%'): lines.insert(0, f'%%{self._autoddp}\n')
+        ''' https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
+        if self._autoddp and lines and (not lines[0].startswith('%')):
+            lines.insert(0, f'%%{self._autoddp}\n')
         return lines
         
      # Add autoddp --freemem:bool

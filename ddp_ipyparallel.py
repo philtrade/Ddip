@@ -80,31 +80,35 @@ class IppCluster():
 class Ddp():
     def __init__(self, **kwargs):
         assert torch.cuda.is_available(), "CUDA not available! (Try reloading cuda driver?)"
-        n_engines=torch.cuda.device_count()
-        self.cluster = IppCluster(n=n_engines, **kwargs)
+        self.cluster = None
         self.ddp_group = None
 
     def __del__(self): self.shutdown_cluster()
 
+    def init_cluster(self, n_engines:int=0, **kwargs):
+        self.cluster = IppCluster(n=n_engines, **kwargs)
+
     def new_group(self, gpus:List[int], node_rank=0, world_size=0):
         '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
-        n_gpu = len(gpus)
-        assert n_gpu <= len(self.cluster.client), f"More GPU ({gpus}) than ipyparallel engines ({len(self.cluster.client)})"
-        assert max(gpus) < torch.cuda.device_count(), f"Invalid GPU id {max(gpus)}, highest allowed is {torch.cuda.device_count()-1}"
+        (n_gpu, n_device) = (len(gpus), torch.cuda.device_count())
+        if not self.cluster: self.init_cluster(n_engines=n_device)
+        cl = self.cluster # shorthand
+        assert n_gpu <= len(cl.client), f"More GPU ({gpus}) than ipyparallel engines ({len(cl.client)}). "
+        assert max(gpus) < n_device, f"Invalid GPU id {max(gpus)}, highest allowed is {n_device-1}"
 
         Verbose and print(f"Initializing torch distributed group with GPUs {gpus}", flush=True)
 
         if world_size==0: world_size = n_gpu
         for rank,gpu in enumerate(gpus):
             dist_rank = n_gpu * node_rank + rank # see torch/distributed/launch.py
-            self.cluster.client[gpu].push(dict(g_rank=dist_rank, l_rank=rank, gpu=gpu, ws=world_size))
+            cl.client[gpu].push(dict(g_rank=dist_rank, l_rank=rank, gpu=gpu, ws=world_size))
 
         # ipyparallel client[] accepts list of ints as slice indices.
-        self.cluster.px_view = self.cluster.client[gpus]
-        self.cluster.px_view.execute('from ippddp.ddp_ipyparallel import join_group_single, exit_group_single')
-        self.cluster.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
-        print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in self.cluster.px_view.pull('r').get_dict().items()], flush=True)
+        cl.px_view = cl.client[gpus]
+        cl.px_view.execute('from ippddp.ddp_ipyparallel import join_group_single, exit_group_single')
+        cl.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
+        print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()], flush=True)
         self.ddp_group = gpus
 
     def gpus_str(self):

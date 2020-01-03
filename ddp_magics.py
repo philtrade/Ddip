@@ -39,30 +39,22 @@ class IppDdp(Magics):
                     print(st[self._counts[i]:], end='', flush=True)
                     self._counts[i] = len(st)
 
-    _instance = None # A singleton
     _default_streaming_pause = 0.1
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None: cls._instance = super(IppDdp,cls).__new__(cls,*args,**kwargs)
-        return cls._instance
 
     def __init__(self, shell:IPython.InteractiveShell=None, **kwargs):
         super(IppDdp, self).__init__(shell=shell) # will setup self.shell
         self._streaming_pause = IppDdp._default_streaming_pause
-        self._init_ddp_cluster(**kwargs)
+        self.init_ddp(**kwargs)
 
-    def _init_ddp_cluster(self, **kwargs):
+    def init_ddp(self, **kwargs):
         '''Initialize a new DDP group, reset states of ipython magic, and associated applicaiton to None.'''
         self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
         self._app = None
         self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
 
-    def __del__(self): IppDdp.close()
+    def __del__(self):
+        if self.ddp: self.ddp.shutdown_cluster()
 
-    @classmethod
-    def close(cls):
-        if cls._instance: cls._instance.ddp.shutdown_cluster()
-        cls._instance = None
-    
     def app_init(self, appname:str):
         app = DDP_Apps.get(appname, None)
         if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP.  Available ones are: {DDP_Apps.keys()}")
@@ -104,6 +96,14 @@ class IppDdp(Magics):
         print(f"Auto parallel execution: {self._autoddp if self._autoddp else 'Off'}")
         return self._autoddp
 
+    @line_magic
+    def ddpstop(self, line=''):
+        if self.ddp:
+            Verbose and print("%ddpstop shutting down cluster....", flush=True, file=sys.stderr)
+            self.app_exit() # In reverse order: clean up the app first, then the DDP group
+            self.ddp.shutdown_cluster()
+            self.ddp = None
+
     @magic_arguments()
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', type=str, default='fastai')
@@ -121,15 +121,8 @@ class IppDdp(Magics):
         global Verbose
         Verbose = args.verbose
 
-        if args.restart:
-            if self.ddp:
-                Verbose and print("%ddpx shutting down cluster....", flush=True, file=sys.stderr)
-                self.app_exit() # In reverse order: clean up the app first, then the DDP group
-                self.ddp.shutdown_cluster()
-                Verbose and print("pausing 3 seconds before restarting cluster....", flush=True, file=sys.stderr)
-                # self.ddp = None
-                time.sleep(3.0)
-            self._init_ddp_cluster()
+        if args.restart: self.ddpstop()
+        if not self.ddp: self.init_ddp()
 
         if args.gpus:
             if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
@@ -177,11 +170,13 @@ class IppDdp(Magics):
         ar.display_outputs()
         return r
 
+    @line_magic
+    def ddpobj(self, line:str=''):
+        if line: self.shell.push({line.split(None,1)[0] : self.ddp})
+        else: print("%ddpobj requires one argument: a variable name to store the DDP object.", file=sys.stderr)
+
 def unload_ipython_extension(ipython):
-    IppDdp.close()
+    ipython.magics_manager.registry.pop('IppDdp')
 
 def load_ipython_extension(ipython:IPython.InteractiveShell):
-    __iddpM = IppDdp(ipython)
-    atexit.register(unload_ipython_extension, ipython)
-    ipython.push({'ddpmagic':__iddpM})
-    ipython.register_magics(__iddpM)
+    ipython.register_magics(IppDdp(ipython))

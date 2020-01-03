@@ -47,7 +47,20 @@ class IppCluster():
                 engine_wait = 0
                 pm = self.px_view.apply_async(os.getpid).get_dict()
                 self.e_pids = [ pm[k] for k in sorted(pm) ]
-                self.e_ppid = self.client[0].apply_sync(os.getppid)
+                e_ppid = self.client[0].apply_sync(os.getppid)
+                self.e_ppid = e_ppid
+
+                def carefree_kill():
+                    '''cleanup routine not tied to the object itself, ensure the object can be garbage collected after 'del''''
+                    subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
+                    try:
+                        os.kill(e_ppid, signal.SIGINT)
+                        Verbose and print("pausing 3 seconds to let cluster shut down....", flush=True, file=sys.stderr)
+                        time.sleep(3.0)
+                    except ProcessLookupError: pass
+                atexit.register(carefree_kill)
+                self.carefree_kill = carefree_kill
+
             except ipyparallel.error.NoEnginesRegistered as e:
                 print('.', file=sys.stderr, end='', flush=True)
                 time.sleep(1)
@@ -61,12 +74,8 @@ class IppCluster():
 
     def shutdown(self):
         '''Shutdown ipyparallel cluster -- this will kill all processes started by the 'ipcluster start' command.'''
-        subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
-        try:
-            if self.e_ppid: os.kill(self.e_ppid, signal.SIGINT) # SIGINT to the parent process of the engines (but not directly to the engines per se), will kill the engines.
-        except ProcessLookupError: pass
+        self.carefree_kill()
         self.px_view = self.client = self.e_pids = self.e_ppid = None
-        Verbose and print(f"IppCluster.shutdown(): Cluster shut down.", file=sys.stderr) 
         
 class Ddp():
     def __init__(self, **kwargs):

@@ -71,7 +71,7 @@ class IppDdp(Magics):
 
         if self._app is None:
             dv = self.ddp.cluster.px_view # shorthand for the DDP process group
-            for imp in app['imports']: dv.execute(imp, block=True)
+            dv.execute('\n'.join(app['imports']), block=True)
             dv.apply_sync(app['initializer'])
             self._app = app
             print(f"Initialized ipyparallel extension for {appname}")

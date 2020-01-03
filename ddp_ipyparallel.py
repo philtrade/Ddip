@@ -10,7 +10,7 @@ def _debug(*args, **kwargs):
     if Debug: print(*args, file=sys.stderr, **kwargs)
 
 def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
-    # import os, torch
+    import os, torch
     os.environ["RANK"] = str(g_rank) # Global rank
     os.environ["LOCAL_RANK"] = str(l_rank) # Local rank
     os.environ["MASTER_ADDR"] = "127.0.0.1"
@@ -19,6 +19,7 @@ def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
     os.environ["OMP_NUM_THREADS"] = str(1) # See https://github.com/pytorch/pytorch/pull/22501
     torch.cuda.set_device(gpu)
     if ws > 1: torch.distributed.init_process_group(backend='nccl', init_method='env://')
+    return os.environ["LOCAL_RANK"]
 
 def exit_group_single():
     for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]: os.environ.pop(i)
@@ -93,8 +94,8 @@ class Ddp():
         # ipyparallel client[] accepts list of ints as slice indices.
         self.cluster.px_view = self.cluster.client[gpus]
         self.cluster.px_view.execute('from ippddp.ddp_ipyparallel import join_group_single, exit_group_single')
-        self.cluster.px_view.execute('join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)')
-        print(f"Local Ranks initialized: {self.cluster.px_view.pull('os.environ["LOCAL_RANK"]').get_dict()}", flush=True)
+        self.cluster.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
+        print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in self.cluster.px_view.pull('r').get_dict().items()], flush=True)
         self.ddp_group = gpus
 
     def gpus_str(self):

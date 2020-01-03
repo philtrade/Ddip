@@ -26,6 +26,9 @@ DEFAULT_APP='fastai'
 
 @magics_class
 class IppDdp(Magics):
+    '''IppDdp is an ipython extension of line and cell magics to harness the pytorch
+    distributed data parallel (DDP) execution over the ipyparallel cluster.
+    '''
     class StreamPrinter():
         ''' Each invocation prints from where it left off till the end of the current output '''
         def __init__(self, streams, *args, **kwargs):

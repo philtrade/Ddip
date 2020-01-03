@@ -17,7 +17,7 @@ def _debug(*args, **kwargs):
 
 DDP_Apps = {
     'fastai' : { 
-        'imports' : [ 'import fastprogress', 'from ippdpp.ipp_distrib import *', 'from fastai.distributed import *', 'import torch'],
+        'imports' : [ 'import fastprogress', 'from ippddp.ddp_fastai import FastaiDDP', 'from fastai.distributed import *', 'import torch'],
         'initializer' : FastaiDDP.fastai_init_ddp, 'finalizer' : FastaiDDP.fastai_finalize_ddp,
         }
 }

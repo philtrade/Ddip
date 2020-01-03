@@ -51,7 +51,7 @@ class IppCluster():
                 self.e_ppid = e_ppid
 
                 def carefree_kill():
-                    '''cleanup routine not tied to the object itself, ensure the object can be garbage collected after 'del''''
+                    '''cleanup routine not tied to the object itself, ensure the object can be garbage collected after 'del' '''
                     subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
                     try:
                         os.kill(e_ppid, signal.SIGINT)

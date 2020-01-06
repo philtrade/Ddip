@@ -108,7 +108,7 @@ class Ddp():
             self.cluster.px_view.apply_sync(self._app.finalizer)
             self._app = None
 
-    def new_group(self, gpus:List[int], appname:str='fastai', node_rank:int=0, world_size:int=0):
+    def new_group(self, gpus:List[int], appname:str='ddp_fastai', node_rank:int=0, world_size:int=0):
         '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
         (n_gpu, n_device) = (len(gpus), torch.cuda.device_count())
@@ -126,7 +126,7 @@ class Ddp():
 
         # ipyparallel client[] accepts list of ints as slice indices.
         cl.px_view = cl.client[gpus]
-        cl.px_view.execute('from ippddp.ddp_ipyparallel import join_group_single, exit_group_single')
+        cl.px_view.execute(f'from {__name__} import join_group_single, exit_group_single')
         cl.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
         print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()], flush=True)
         self.ddp_group = gpus

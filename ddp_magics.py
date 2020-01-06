@@ -14,8 +14,6 @@ Verbose = True
 def _debug(*args, **kwargs):
     if Debug: print(*args, file=sys.stderr, **kwargs)
 
-DEFAULT_APP='fastai'
-
 @magics_class
 class IppDdp(Magics):
     '''IppDdp is an ipython extension of line and cell magics to harness the pytorch

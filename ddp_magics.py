@@ -7,20 +7,12 @@ from IPython.core.display import clear_output
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
 from ipyparallel import AsyncResult
 from .ddp_ipyparallel import Ddp
-from .ddp_fastai import FastaiDDP
 
 Debug = True
 Verbose = True
 
 def _debug(*args, **kwargs):
     if Debug: print(*args, file=sys.stderr, **kwargs)
-
-DDP_Apps = {
-    'fastai' : { 
-        'imports' : [ 'import fastprogress', 'from ippddp.ddp_fastai import FastaiDDP', 'from fastai.distributed import *', 'import torch'],
-        'initializer' : FastaiDDP.fastai_init_ddp, 'finalizer' : FastaiDDP.fastai_finalize_ddp,
-        }
-}
 
 DEFAULT_APP='fastai'
 
@@ -49,32 +41,11 @@ class IppDdp(Magics):
     def init_ddp(self, **kwargs):
         '''Initialize a new DDP group, reset states of ipython magic, and associated applicaiton to None.'''
         self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
-        self._app = None
         self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
 
     def __del__(self):
         if self.ddp: self.ddp.shutdown_cluster()
 
-    def app_init(self, appname:str):
-        app = DDP_Apps.get(appname, None)
-        if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP.  Available ones are: {DDP_Apps.keys()}")
-        
-        if self._app != app: self.app_exit() # Cleanup existing app if any
-
-        if self._app is None:
-            dv = self.ddp.cluster.px_view # shorthand for the DDP process group
-            dv.execute('\n'.join(app['imports']), block=True)
-            dv.apply_sync(app['initializer'])
-            self._app = app
-            print(f"Initialized ipyparallel extension for {appname}")
-        else:
-            print(f"Already initialized ipyparallel extension for {appname}")
-
-    def app_exit(self):
-        if self._app:
-            self.ddp.cluster.px_view.apply_sync(self._app['finalizer'])
-            self._app = None
-           
     def prepender(self, lines:List[str]):
         ''' https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
         if self._autoddp and lines and (not lines[0].startswith('%')):
@@ -83,7 +54,7 @@ class IppDdp(Magics):
         
     @line_magic
     def autoddp(self, line:str):
-        '''Automatically execute subsequent cells on the distributed data parallel group.'''
+        '''Prepend %%ddpx to subsequent cells so that they will run on the distributed data parallel cluster.'''
         '''Todo: free memory after each run'''
         if line:
             hooks = self.shell.input_transformers_cleanup
@@ -100,19 +71,19 @@ class IppDdp(Magics):
     def ddpstop(self, line=''):
         if self.ddp:
             Verbose and print("%ddpstop shutting down cluster....", flush=True, file=sys.stderr)
-            self.app_exit() # In reverse order: clean up the app first, then the DDP group
             self.ddp.shutdown_cluster()
             self.ddp = None
 
     @magic_arguments()
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
-    @argument('-a', '--app', dest='appname', type=str, default='fastai')
+    @argument('-a', '--app', dest='appname', type=str)
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart all engine processes.")
     @argument('-d', '--debug', nargs='?', type=lambda x: (str(x).lower() == 'true'))
     @argument('-v', '--verbose', nargs='?', type=lambda x: (str(x).lower() == 'true'))
     @line_magic
     def ddprep(self, line=''):
-        "%ddprep -- line magic to setup/tear down the cluster as a DDP training group, app-specific handling of object"
+        '''%ddprep -- line magic to setup/tear down the cluster as a DDP training group, app-specific handling of object'''
+        '''Todo: add -i for info on current config'''
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         args = parse_argstring(self.ddprep, line)
 
@@ -132,28 +103,25 @@ class IppDdp(Magics):
                 print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
                 return  # same group or empty group => do nothing
             
-            if self.ddp.ddp_group: # Exit old DDP group if exists
-                self.app_exit()
-                self.ddp.exit_group()
-
-            self.ddp.new_group(gpus=gpus)
-            self.app_init(args.appname)
+            self.ddp.exit_group() # Exit old DDP group if exists
+                
+            self.ddp.new_group(gpus=gpus, appname=args.appname)
  
     @magic_arguments()
     @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @cell_magic
     def ddpx(self, line, cell): # CAN WATCH BE CONTEXT SENSITIVE?
-        "%%ddpx - Parallel execution on cluster, allows transient output be displayed"
+        '''%%ddpx - Parallel execution on cluster, allows transient output be displayed'''
+        '''Todo: add --free to free cuda cache and calls gc.collect() after the cell is run'''
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         assert self.ddp and self.ddp.ddp_group, "%%ddpx: DDP group does not exist yet.  Have you run %ddprep?"
         Verbose and print(f"Invoking cell magic: %%ddpx {line}", file=sys.stderr, flush=True)
-        args = parse_argstring(self.ddpx, line)
 
+        args = parse_argstring(self.ddpx, line)
         px_args=f"--noblock --targets {self.ddp.gpus_str()}"
         try:
             ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
-
-            watcher = self._app.get('watcher', IppDdp.StreamPrinter)(ar.stdout) if (not args.quiet) and self._app else None
+            watcher = IppDdp.StreamPrinter(ar.stdout) if (not args.quiet) else None
 
             if watcher:
                 while not ar.ready(): # Simulate wait on blocking execution

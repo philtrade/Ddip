@@ -1,4 +1,4 @@
-import sys, time, os, re, ipyparallel, torch, atexit, IPython, dataclasses, subprocess, signal
+import sys, time, os, re, ipyparallel, torch, atexit, IPython, dataclasses, subprocess, signal, importlib
 from collections import OrderedDict
 from typing import List
 from torch.distributed import *
@@ -82,13 +82,33 @@ class Ddp():
         assert torch.cuda.is_available(), "CUDA not available! (Try reloading cuda driver?)"
         self.cluster = None
         self.ddp_group = None
+        self._app = None
 
     def __del__(self): self.shutdown_cluster()
 
     def init_cluster(self, n_engines:int=0, **kwargs):
         self.cluster = IppCluster(n=n_engines, **kwargs)
 
-    def new_group(self, gpus:List[int], node_rank=0, world_size=0):
+    def app_init(self, appname:str):
+        app = importlib.import_module(f".{appname}", package=__package__)
+        if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP. Have you installed ddp_{appname}.py?")
+        
+        self.app_exit() # Cleanup existing app
+
+        if self._app is None:
+            dv = self.cluster.px_view # shorthand for the DDP process group
+            print(f"Importing on cluster: {app.imports}", flush=True)
+            dv.execute(app.imports, block=True)
+            r = dv.apply_sync(app.initializer)
+            print(f"{appname}:\n", '\n'.join(r), sep='')
+            self._app = app
+
+    def app_exit(self):
+        if self._app:
+            self.cluster.px_view.apply_sync(self._app.finalizer)
+            self._app = None
+
+    def new_group(self, gpus:List[int], appname:str='fastai', node_rank:int=0, world_size:int=0):
         '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
         (n_gpu, n_device) = (len(gpus), torch.cuda.device_count())
@@ -111,10 +131,13 @@ class Ddp():
         print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()], flush=True)
         self.ddp_group = gpus
 
+        if appname: self.app_init(appname)
+
     def gpus_str(self):
         return ','.join(map(str, self.ddp_group))
 
     def exit_group(self):
+        self.app_exit()
         if self.ddp_group is None: return
         Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
         self.cluster.px_view.execute('exit_group_single()',block=True)

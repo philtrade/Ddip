@@ -10,6 +10,9 @@ def _debug(*args, **kwargs):
     if Debug: print(*args, file=sys.stderr, **kwargs)
 
 def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
+    '''Join the current process to a PyTorch distributed group.
+    Todo -- parameterize all currently hardcoded values.
+    '''
     import os, torch
     os.environ["RANK"] = str(g_rank) # Global rank
     os.environ["LOCAL_RANK"] = str(l_rank) # Local rank
@@ -22,10 +25,10 @@ def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
     return os.environ["LOCAL_RANK"]
 
 def exit_group_single():
+    '''Exit the current process from the PyTorch distributed process group.'''
     for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]: os.environ.pop(i)
     torch.distributed.destroy_process_group()
     torch.cuda.empty_cache()
-
 
 class IppCluster():
     """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
@@ -69,7 +72,8 @@ class IppCluster():
     def __del__(self): self.shutdown()
 
     def interrupt_engines(self, eids:List[int]):
-        '''Send SIGINT to a list of ipyparallel engines'''
+        '''Send SIGINT to a list of ipyparallel engines, as if sending a keyboard interrupt to ipython running on the engine process.
+         -- Note this does NOT kill the engine process.'''
         for i in eids: i < len(self.e_pids) and os.kill(self.e_pids[i], signal.SIGINT)
 
     def shutdown(self):
@@ -90,8 +94,10 @@ class Ddp():
         self.cluster = IppCluster(n=n_engines, **kwargs)
 
     def app_init(self, appname:str):
+        '''Configure additional application besides PyTorch op each ipyparallel engine process.
+        The application module must have a `initializer()` function.'''
         app = importlib.import_module(f".{appname}", package=__package__)
-        if app is None: raise ValueError(f"Unknown app '{appname}' for Torch DDP. Have you installed ddp_{appname}.py?")
+        if app is None: raise NameError(f"Unknown app '{appname}' for Torch DDP. Have you installed {appname}.py?")
         
         self.app_exit() # Cleanup existing app
 
@@ -104,12 +110,13 @@ class Ddp():
             self._app = app
 
     def app_exit(self):
+        '''Execute the `finalizer()` call of the current application on all engines.'''
         if self._app:
             self.cluster.px_view.apply_sync(self._app.finalizer)
             self._app = None
 
     def new_group(self, gpus:List[int], appname:str=None, node_rank:int=0, world_size:int=0):
-        '''Configure a torch distributed process group of GPUs over a ipyparallel cluster.
+        '''Configure a torch distributed process group of GPUs on a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
         (n_gpu, n_device) = (len(gpus), torch.cuda.device_count())
         if not self.cluster: self.init_cluster(n_engines=n_device)
@@ -137,6 +144,7 @@ class Ddp():
         return ','.join(map(str, self.ddp_group))
 
     def exit_group(self):
+        '''Tear down the PyTorch distributed process group on the ipyparallel cluster.'''
         self.app_exit()
         if self.ddp_group is None: return
         Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
@@ -144,6 +152,7 @@ class Ddp():
         self.cluster.px_view = self.ddp_group = None
 
     def shutdown_cluster(self):
+        '''Properly shuts down the ipyparallel cluster (of engines).'''
         self.exit_group()
         if self.cluster:
             self.cluster.shutdown()

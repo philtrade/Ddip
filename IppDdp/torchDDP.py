@@ -1,4 +1,4 @@
-import sys, time, os, re, ipyparallel, torch, atexit, IPython, dataclasses, subprocess, signal, importlib
+import sys, time, os, re, ipyparallel, torch, atexit, subprocess, signal, importlib
 from collections import OrderedDict
 from typing import List
 from torch.distributed import *
@@ -29,6 +29,23 @@ def exit_group_single():
     for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]: os.environ.pop(i)
     torch.distributed.destroy_process_group()
     torch.cuda.empty_cache()
+
+def meminfo():
+    t = torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory
+    c = torch.cuda.memory_cached()
+    u = torch.cuda.memory_allocated()
+    return { 'total': t, 'cached': c, 'used': u, 'free in cache': c - u }
+
+def freemem(need_info:bool=False):
+    '''Run gc.collect() and torch.cuda.empty_cache() if applicable.'''
+    import gc
+    r = [] if need_info else None
+    gc.collect()
+    if torch.cuda.is_available():
+        need_info and r.append(meminfo())
+        torch.cuda.empty_cache()
+        need_info and r.append(meminfo())
+    return r
 
 class IppCluster():
     """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
@@ -93,6 +110,13 @@ class Ddp():
     def init_cluster(self, n_engines:int=0, **kwargs):
         self.cluster = IppCluster(n=n_engines, **kwargs)
 
+    def shutdown_cluster(self):
+        '''Properly shuts down the ipyparallel cluster (of engines).'''
+        self.exit_group()
+        if self.cluster:
+            self.cluster.shutdown()
+            self.cluster = None
+
     def app_init(self, appname:str):
         '''Configure additional application besides PyTorch op each ipyparallel engine process.
         The application module must have a `initializer()` function.'''
@@ -115,6 +139,9 @@ class Ddp():
             self.cluster.px_view.apply_sync(self._app.finalizer)
             self._app = None
 
+    def gpus_str(self):
+        return ','.join(map(str, self.ddp_group))
+
     def new_group(self, gpus:List[int], appname:str=None, node_rank:int=0, world_size:int=0):
         '''Configure a torch distributed process group of GPUs on a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
@@ -133,15 +160,12 @@ class Ddp():
 
         # ipyparallel client[] accepts list of ints as slice indices.
         cl.px_view = cl.client[gpus]
-        cl.px_view.execute(f'from {__name__} import join_group_single, exit_group_single')
+        cl.px_view.execute(f'from {__name__} import join_group_single, exit_group_single, meminfo, freemem')
         cl.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
         print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()], flush=True)
         self.ddp_group = gpus
 
         if appname: self.app_init(appname)
-
-    def gpus_str(self):
-        return ','.join(map(str, self.ddp_group))
 
     def exit_group(self):
         '''Tear down the PyTorch distributed process group on the ipyparallel cluster.'''
@@ -151,9 +175,8 @@ class Ddp():
         self.cluster.px_view.execute('exit_group_single()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
-    def shutdown_cluster(self):
-        '''Properly shuts down the ipyparallel cluster (of engines).'''
-        self.exit_group()
-        if self.cluster:
-            self.cluster.shutdown()
-            self.cluster = None
+    def freemem(self, need_info:bool=False):
+        '''Calls gc.collect() and torch.cuda.empty_cache() if applicable.'''
+        if need_info: print(f"Freeing up memory on GPUs....", flush=True)
+        r = self.cluster.px_view.apply_async(freemem, need_info).get_dict() if self.cluster.px_view else {}
+        return r

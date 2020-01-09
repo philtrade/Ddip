@@ -39,7 +39,7 @@ def silent_console(silent:bool=True):
 imports = '\n'.join([ 'import fastai, fastai.torch_core, torch, fastprogress', 'from fastai.distributed import *', f"from {__name__} import initializer, finalizer", ])
 
 def initializer():
-    '''Do a few housekeeping:
+    '''A few fastai_v1-specific housekeeping:
     0. Set defaults.device to the proper device, due to a bug in fastai.torch_core.py
         where the defaults.device is initialized without regard to the curren cuda device.
     1. Limit standard output to only the RANK 0 process.

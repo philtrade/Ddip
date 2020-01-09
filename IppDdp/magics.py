@@ -110,6 +110,7 @@ class IppDdp(Magics):
  
     @magic_arguments()
     @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
+    @argument('--gc', dest='gc', action='store_true', help="Free up memory on each engine at the completion of the cell")
     @cell_magic
     def ddpx(self, line, cell): # CAN WATCH BE CONTEXT SENSITIVE?
         '''%%ddpx - Parallel execution on cluster, allows transient output be displayed'''
@@ -137,6 +138,14 @@ class IppDdp(Magics):
             self.ddp.cluster.interrupt_engines(self.ddp.ddp_group)
 
         ar.display_outputs()
+
+        if args.gc:
+            meminfo = self.ddp.freemem(not args.quiet) # ddp.gc() returns a dict keyed by engine id
+            for e, m in meminfo.items():
+                if len(m) > 0:
+                    print(f"GPU[{e}] memory before gc:{m[0]}")
+                    print(f"GPU[{e}] memory after  gc:{m[1]}")
+
         return r
 
     @line_magic

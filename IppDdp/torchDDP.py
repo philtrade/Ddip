@@ -31,21 +31,14 @@ def exit_group_single():
     torch.cuda.empty_cache()
 
 def meminfo():
-    t = torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory
-    c = torch.cuda.memory_cached()
-    u = torch.cuda.memory_allocated()
-    return { 'total': t, 'cached': c, 'used': u, 'free in cache': c - u }
+    return [torch.cuda.memory_cached(), torch.cuda.memory_allocated()] if torch.cuda.is_available() else None
 
-def freemem(need_info:bool=False):
+def freemem():
     '''Run gc.collect() and torch.cuda.empty_cache() if applicable.'''
     import gc
-    r = [] if need_info else None
     gc.collect()
-    if torch.cuda.is_available():
-        need_info and r.append(meminfo())
-        torch.cuda.empty_cache()
-        need_info and r.append(meminfo())
-    return r
+    if torch.cuda.is_available(): torch.cuda.empty_cache()
+    return meminfo()
 
 class IppCluster():
     """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
@@ -175,8 +168,9 @@ class Ddp():
         self.cluster.px_view.execute('exit_group_single()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
-    def freemem(self, need_info:bool=False):
+    def meminfo(self):
+        return self.cluster.px_view.apply_async(meminfo).get_dict() if self.cluster.px_view else None
+
+    def gc(self):
         '''Calls gc.collect() and torch.cuda.empty_cache() if applicable.'''
-        if need_info: print(f"Freeing up memory on GPUs....", flush=True)
-        r = self.cluster.px_view.apply_async(freemem, need_info).get_dict() if self.cluster.px_view else {}
-        return r
+        return self.cluster.px_view.apply_async(freemem).get_dict() if self.cluster.px_view else None

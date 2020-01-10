@@ -121,6 +121,7 @@ class IppDdp(Magics):
 
         args = parse_argstring(self.ddpx, line)
         px_args=f"--noblock --targets {self.ddp.gpus_str()}"
+        baseline_mem = self.ddp.meminfo() if args.gc else None # a dict keyed by engine ID which happens to be GPU ID
         try:
             ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
             watcher = IppDdp.StreamPrinter(ar.stdout) if (not args.quiet) else None
@@ -138,14 +139,9 @@ class IppDdp(Magics):
             self.ddp.cluster.interrupt_engines(self.ddp.ddp_group)
 
         ar.display_outputs()
-
-        if args.gc:
-            meminfo = self.ddp.freemem(not args.quiet) # ddp.gc() returns a dict keyed by engine id
-            for e, m in meminfo.items():
-                if len(m) > 0:
-                    print(f"GPU[{e}] memory before gc:{m[0]}")
-                    print(f"GPU[{e}] memory after  gc:{m[1]}")
-
+        if args.gc and (self.ddp.meminfo() != baseline_mem):
+            m = self.ddp.gc() # ddp.gc() returns a dict keyed by engine id
+            Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
         return r
 
     @line_magic

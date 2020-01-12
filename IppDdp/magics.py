@@ -115,8 +115,8 @@ class IppDdp(Magics):
     @magic_arguments()
     @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('--gc', dest='gc', action='store_true', help="Free up memory on each engine at the completion of the cell")
-    @argument('--local', '-L', dest='local', nargs='?', type=str, choices=["first", "only"], const='first',
-        help="Run the cell locally in this iPython, either 'first' before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to first")
+    @argument('--local', '-L', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
+        help="Run the cell locally in this iPython, either before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to `too`")
     @cell_magic
     def ddpx(self, line, cell):
         '''%%ddpx - Parallel execution on cluster, allows transient output be displayed'''

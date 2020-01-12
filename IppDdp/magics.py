@@ -41,32 +41,36 @@ class IppDdp(Magics):
 
     def init_ddp(self, **kwargs):
         '''Initialize a new DDP group, reset states of ipython magic, and associated applicaiton to None.'''
-        self._autoddp = None # Flag to control if parallel execution is by default ON or OFF
+        self._autoddpx = None # Flag to control if parallel execution is by default ON or OFF
         self.ddp = Ddp(**kwargs) # Controller for DDP, and the underlying ipyparallel cluster
 
     def __del__(self):
         if self.ddp: self.ddp.shutdown_cluster()
 
     def prepender(self, lines:List[str]):
-        ''' https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
-        if self._autoddp and lines and (not lines[0].startswith('%')):
-            lines.insert(0, f'%%{self._autoddp}\n')
+        '''Prepend automatic DDP execution cell magic, unless the cell begins with '%', i.e. an explicit magic. https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
+        if self._autoddpx and lines and (not lines[0].startswith('%')):
+            lines.insert(0, f"{self._autoddpx}\n")
         return lines
-        
+    
     @line_magic
-    def autoddp(self, line:str):
+    def nop(self, line:str):
+        '''Pure No-Op line object, used as a marker to temporarily disable the `prepender()` from inserting anything. '''
+        pass
+
+    @line_magic
+    def autoddpx(self, line:str):
         '''Prepend %%ddpx to subsequent cells so that they will run on the distributed data parallel cluster.'''
         '''Todo: free memory after each run'''
         if line:
             hooks = self.shell.input_transformers_cleanup
             if line.split(None,1)[0] == "off": # Unregister the prepender
-                self._autoddp = None
+                self._autoddpx = None
                 while self.prepender in hooks: hooks.remove(self.prepender)
             else: # Register the prepender, 
-                self._autoddp = line
+                self._autoddpx = f"%%ddpx {line}"
                 if self.prepender not in hooks: hooks.append(self.prepender)
-        print(f"Auto parallel execution: {self._autoddp if self._autoddp else 'Off'}")
-        return self._autoddp
+        return f"Automatic DDP execution: {self._autoddpx}"
 
     @line_magic
     def ddpstop(self, line=''):
@@ -111,16 +115,23 @@ class IppDdp(Magics):
     @magic_arguments()
     @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('--gc', dest='gc', action='store_true', help="Free up memory on each engine at the completion of the cell")
+    @argument('--local', '-L', dest='local', nargs='?', type=str, choices=["first", "only"], const='first',
+        help="Run the cell locally in this iPython, either 'first' before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to first")
     @cell_magic
-    def ddpx(self, line, cell): # CAN WATCH BE CONTEXT SENSITIVE?
+    def ddpx(self, line, cell):
         '''%%ddpx - Parallel execution on cluster, allows transient output be displayed'''
-        '''Todo: add --free to free cuda cache and calls gc.collect() after the cell is run'''
+        '''Returns result from remote execution, or, when --local is specified, a dict { 'remote': remote_result, 'local': local_result}'''
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         assert self.ddp and self.ddp.ddp_group, "%%ddpx: DDP group does not exist yet.  Have you run %ddprep?"
         Verbose and print(f"Invoking cell magic: %%ddpx {line}", file=sys.stderr, flush=True)
 
         args = parse_argstring(self.ddpx, line)
+
+        local_result = self.shell.run_cell("%nop\n"+cell).result if args.local else None
+        if args.local == 'only': return local_result
+
         px_args=f"--noblock --targets {self.ddp.gpus_str()}"
+
         baseline_mem = self.ddp.meminfo() if args.gc else None # a dict keyed by engine ID which happens to be GPU ID
         try:
             ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
@@ -138,10 +149,15 @@ class IppDdp(Magics):
             Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
             self.ddp.cluster.interrupt_engines(self.ddp.ddp_group)
 
+        # Todo: The stdout portion will be displayed twice, first here via ar.display_outputs(),
+        # then again through the last line of the method, `return r`. Need to avoid this duplicated output.
         ar.display_outputs()
+
         if args.gc and (self.ddp.meminfo() != baseline_mem):
             m = self.ddp.gc() # ddp.gc() returns a dict keyed by engine id
             Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
+        
+        if args.local: r = {'remote': r, f"local {args.local}": local_result}
         return r
 
     @line_magic

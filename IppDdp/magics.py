@@ -1,6 +1,7 @@
 import sys, time, os, re, ipyparallel, torch, atexit, IPython, dataclasses
 from collections import OrderedDict
 from typing import List
+from types import SimpleNamespace
 from torch.distributed import *
 from IPython.core.magic import Magics, magics_class, cell_magic, line_magic
 from IPython.core.display import clear_output
@@ -9,13 +10,12 @@ from ipyparallel import AsyncResult
 from .torchDDP import Ddp
 
 this = sys.modules[__name__]
-this.defaults = { 'appname' : 'fastai-v1' }
+this.defaults = { 'appname' : 'fastai-v1',}
 
-Debug = True
-Verbose = True
+Config = SimpleNamespace(Debug = True, Verbose = True)
 
 def _debug(*args, **kwargs):
-    if Debug: print(*args, file=sys.stderr, **kwargs)
+    if Config.Debug: print(*args, file=sys.stderr, **kwargs)
 
 @magics_class
 class IppDdp(Magics):
@@ -62,7 +62,7 @@ class IppDdp(Magics):
     @line_magic
     def ddpstop(self, line=''):
         if self.ddp:
-            Verbose and print("%ddpstop shutting down cluster....", flush=True, file=sys.stderr)
+            Config.Verbose and print("%ddpstop shutting down cluster....", flush=True, file=sys.stderr)
             self.ddp.shutdown_cluster()
             self.ddp = None
 
@@ -70,8 +70,8 @@ class IppDdp(Magics):
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', default=this.defaults['appname'], type=str)
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart all engine processes.")
-    @argument('-d', '--debug', nargs='?', type=lambda x: (str(x).lower() == 'true'))
-    @argument('-v', '--verbose', nargs='?', type=lambda x: (str(x).lower() == 'true'))
+    @argument('-d', '--debug', dest='debug', nargs='?', type=str, const="True", choices=["True", "False"], help="Turn on debugging output.")
+    @argument('-v', '--verbose', dest='verbose', nargs='?', type=str, const="True", choices=["True", "False"],help='print a message at each execution.')
     @line_magic
     def ddprep(self, line=''):
         '''%ddprep -- line magic to setup/tear down the cluster as a DDP training group, app-specific handling of object'''
@@ -79,13 +79,14 @@ class IppDdp(Magics):
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         args = parse_argstring(self.ddprep, line)
 
-        global Debug # Monkey hack until  classes have their own module namespaces and own debug/verbose flags
-        Debug = args.debug
-        global Verbose
-        Verbose = args.verbose
+        if args.debug: Config.Debug = args.debug == "True"
 
         if args.restart: self.ddpstop()
         if not self.ddp: self.init_ddp()
+
+        if args.verbose:
+            Config.Verbose = args.verbose == "True"
+            self.ddp.set_verbose(Config.Verbose)
 
         if args.gpus:
             if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
@@ -98,7 +99,8 @@ class IppDdp(Magics):
             self.ddp.exit_group() # Exit old DDP group if exists
                 
             self.ddp.new_group(gpus=gpus, appname=args.appname)
- 
+            self.shell.run_line_magic("pxconfig", "--verbose" if Config.Verbose else "--no-verbose")        
+
     @magic_arguments()
     @argument('--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('--gc', dest='gc', action='store_true', help="Free up memory on each engine at the completion of the cell")
@@ -113,7 +115,7 @@ class IppDdp(Magics):
 
         args = parse_argstring(self.ddpx, line)
 
-        print(f"%%ddpx {line}: Running cell on " + f"{run_on.get(args.local,'')}" + "cluster (GPUs: {self.ddp.gpus_str()})", flush=True)
+        print(f"%%ddpx {line}: Running cell on " + f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {self.ddp.gpus_str()})", flush=True)
         if args.local: self.shell.run_cell("%nop\n"+cell, silent = args.quiet)
         if args.local == 'only': return
 

@@ -3,12 +3,12 @@ from ipyparallel import AsyncResult
 from collections import OrderedDict
 from typing import List
 from torch.distributed import *
+from types import SimpleNamespace
 
-Debug = True
-Verbose = True
+Config = SimpleNamespace(Debug = True, Verbose = True)
 
 def _debug(*args, **kwargs):
-    if Debug: print(*args, file=sys.stderr, **kwargs)
+    if Config.Debug: print(*args, file=sys.stderr, **kwargs)
 
 def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
     '''Join the current process to a PyTorch distributed group.
@@ -69,7 +69,7 @@ class IppCluster():
                     subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
                     try:
                         os.kill(e_ppid, signal.SIGINT)
-                        Verbose and print("pausing 3 seconds to let cluster shut down....", flush=True, file=sys.stderr)
+                        Config.Verbose and print("The cluster takes a few secons to shut down....", flush=True, file=sys.stderr)
                         time.sleep(3.0)
                     except ProcessLookupError: pass
                 atexit.register(carefree_kill)
@@ -113,6 +113,9 @@ class Ddp():
         self._app = None
 
     def __del__(self): self.shutdown_cluster()
+
+    def set_verbose(self, verbose:bool):
+        Config.Verbose = verbose
 
     def init_cluster(self, n_engines:int=0, **kwargs):
         self.cluster = IppCluster(n=n_engines, **kwargs)
@@ -158,7 +161,7 @@ class Ddp():
         assert n_gpu <= len(cl.client), f"More GPU ({gpus}) than ipyparallel engines ({len(cl.client)}). "
         assert max(gpus) < n_device, f"Invalid GPU id {max(gpus)}, highest allowed is {n_device-1}"
 
-        Verbose and print(f"Initializing torch distributed group with GPUs {gpus}", flush=True)
+        Config.Verbose and print(f"Initializing torch distributed group with GPUs {gpus}", flush=True)
 
         if world_size==0: world_size = n_gpu
         for rank,gpu in enumerate(gpus):
@@ -178,7 +181,7 @@ class Ddp():
         '''Tear down the PyTorch distributed process group on the ipyparallel cluster.'''
         self.app_exit()
         if self.ddp_group is None: return
-        Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
+        Config.Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
         self.cluster.px_view.execute('exit_group_single()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
@@ -202,12 +205,12 @@ class Ddp():
                 ar.stdout = [] # already displayed, flush the streams.
 
         except KeyboardInterrupt:
-            Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
+            Config.Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
             self.cluster.interrupt_engines(self.ddp_group)
 
         ar.display_outputs()
 
         if gc and (self.meminfo() != baseline_mem):
             m = self.gc() # ddp.gc() returns a dict keyed by engine id
-            Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
+            Config.Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
         

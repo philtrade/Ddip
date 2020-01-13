@@ -22,21 +22,8 @@ class IppDdp(Magics):
     '''IppDdp is an ipython extension of line and cell magics to harness the pytorch
     distributed data parallel (DDP) execution over the ipyparallel cluster.
     '''
-    class StreamPrinter():
-        ''' Each invocation prints from where it left off till the end of the current output '''
-        def __init__(self, streams, *args, **kwargs):
-            self._counts = [0] * len(streams)
-        def __call__(self, streams, *args, **kwargs):
-            for i, st in enumerate(streams):
-                if (len(st) > self._counts[i]):
-                    print(st[self._counts[i]:], end='', flush=True)
-                    self._counts[i] = len(st)
-
-    _default_streaming_pause = 0.1
-
     def __init__(self, shell:IPython.InteractiveShell, **kwargs):
         super(IppDdp, self).__init__(shell=shell) # will setup self.shell
-        self._streaming_pause = IppDdp._default_streaming_pause
         self.init_ddp(**kwargs)
 
     def init_ddp(self, **kwargs):
@@ -113,53 +100,25 @@ class IppDdp(Magics):
             self.ddp.new_group(gpus=gpus, appname=args.appname)
  
     @magic_arguments()
-    @argument('--quiet', dest='quiet', action='store_true', help="Display any stdout only after task is finished, skip all the transient, real-time output.")
+    @argument('--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('--gc', dest='gc', action='store_true', help="Free up memory on each engine at the completion of the cell")
     @argument('--local', '-L', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
         help="Run the cell locally in this iPython, either before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to `too`")
     @cell_magic
     def ddpx(self, line, cell):
-        '''%%ddpx - Parallel execution on cluster, allows transient output be displayed'''
-        '''Returns result from remote execution, or, when --local is specified, a dict { 'remote': remote_result, 'local': local_result}'''
+        '''%%ddpx - Parallel execution on cluster, allows transient output be displayed.'''
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         assert self.ddp and self.ddp.ddp_group, "%%ddpx: DDP group does not exist yet.  Have you run %ddprep?"
-        Verbose and print(f"Invoking cell magic: %%ddpx {line}", file=sys.stderr, flush=True)
+        run_on = { 'too' : 'local ipython and ', 'only' : 'local ipython ONLY, SKIPPING '}
 
         args = parse_argstring(self.ddpx, line)
 
-        local_result = self.shell.run_cell("%nop\n"+cell).result if args.local else None
-        if args.local == 'only': return local_result
+        print(f"%%ddpx {line}: Running cell on " + f"{run_on.get(args.local,'')}" + "cluster (GPUs: {self.ddp.gpus_str()})", flush=True)
+        if args.local: self.shell.run_cell("%nop\n"+cell, silent = args.quiet)
+        if args.local == 'only': return
 
-        px_args=f"--noblock --targets {self.ddp.gpus_str()}"
-
-        baseline_mem = self.ddp.meminfo() if args.gc else None # a dict keyed by engine ID which happens to be GPU ID
-        try:
-            ar = self.shell.run_cell_magic("px", px_args, cell) # use parallel_execute?
-            watcher = IppDdp.StreamPrinter(ar.stdout) if (not args.quiet) else None
-
-            if watcher:
-                while not ar.ready(): # Simulate wait on blocking execution
-                    watcher(ar.stdout)
-                    time.sleep(self._streaming_pause)
-                watcher(ar.stdout)
-                clear_output()
-
-            r = ar.get() # Blocks till completion
-        except KeyboardInterrupt:
-            Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
-            self.ddp.cluster.interrupt_engines(self.ddp.ddp_group)
-
-        # Todo: The stdout portion will be displayed twice, first here via ar.display_outputs(),
-        # then again through the last line of the method, `return r`. Need to avoid this duplicated output.
-        ar.display_outputs()
-
-        if args.gc and (self.ddp.meminfo() != baseline_mem):
-            m = self.ddp.gc() # ddp.gc() returns a dict keyed by engine id
-            Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
+        self.ddp.run_cell(cell, quiet=args.quiet, gc=args.gc)
         
-        if args.local: r = {'remote': r, f"local {args.local}": local_result}
-        return r
-
     @line_magic
     def ddpobj(self, line:str=''):
         if line: self.shell.push({line.split(None,1)[0] : self.ddp})

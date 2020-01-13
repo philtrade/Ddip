@@ -1,4 +1,5 @@
 import sys, time, os, re, ipyparallel, torch, atexit, subprocess, signal, importlib
+from ipyparallel import AsyncResult
 from collections import OrderedDict
 from typing import List
 from torch.distributed import *
@@ -92,6 +93,19 @@ class IppCluster():
         self.px_view = self.client = self.e_pids = self.e_ppid = None
         
 class Ddp():
+    class StreamPrinter():
+        ''' Each invocation prints from where it left off till the end of the current output '''
+        _default_streaming_pause = 0.1
+        def __init__(self, streams, *args, **kwargs):
+            self._counts = [0] * len(streams)
+            self._pause = kwargs.get('pause', self._default_streaming_pause)
+        def __call__(self, streams, *args, **kwargs):
+            for i, st in enumerate(streams):
+                if (len(st) > self._counts[i]):
+                    print(st[self._counts[i]:], end='', flush=True)
+                    self._counts[i] = len(st)
+            time.sleep(self._pause)
+
     def __init__(self, **kwargs):
         assert torch.cuda.is_available(), "CUDA not available! (Try reloading cuda driver?)"
         self.cluster = None
@@ -174,3 +188,26 @@ class Ddp():
     def gc(self):
         '''Calls gc.collect() and torch.cuda.empty_cache() if applicable.'''
         return self.cluster.px_view.apply_async(freemem).get_dict() if self.cluster.px_view else None
+
+    def run_cell(self, cell, quiet:bool=False, gc:bool=True):
+        baseline_mem = self.meminfo() if gc else None
+        try:
+            ar = self.cluster.px_view.execute(cell, silent=False, block=False) # silent=False to capture transient output
+            watcher = self.StreamPrinter(ar.stdout) if (not quiet) else None
+
+            if watcher:
+                while not ar.ready(): # Simulate wait on blocking execution
+                    watcher(ar.stdout)
+                watcher(ar.stdout)
+                ar.stdout = [] # already displayed, flush the streams.
+
+        except KeyboardInterrupt:
+            Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
+            self.cluster.interrupt_engines(self.ddp_group)
+
+        ar.display_outputs()
+
+        if gc and (self.meminfo() != baseline_mem):
+            m = self.gc() # ddp.gc() returns a dict keyed by engine id
+            Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
+        

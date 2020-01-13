@@ -44,7 +44,7 @@ def freemem():
 class IppCluster():
     """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
     cid = "ippdpp_c"
-    def __init__(self, n:int=0, engine_wait:float=15.0, **kwargs):
+    def __init__(self, n:int=0, engine_wait:float=15.0):
         popen_cmd = ["ipcluster", "start", f"--cluster-id={IppCluster.cid}", "--daemonize"]
         if n > 0: popen_cmd.append(f"--n={n}")
 
@@ -108,17 +108,13 @@ class Ddp():
 
     def __init__(self, **kwargs):
         assert torch.cuda.is_available(), "CUDA not available! (Try reloading cuda driver?)"
-        self.cluster = None
-        self.ddp_group = None
-        self._app = None
+        self.cluster = self.ddp_group = self._app = None
 
     def __del__(self): self.shutdown_cluster()
 
-    def set_verbose(self, verbose:bool):
-        Config.Verbose = verbose
+    def set_verbose(self, verbose:bool): Config.Verbose = verbose
 
-    def init_cluster(self, n_engines:int=0, **kwargs):
-        self.cluster = IppCluster(n=n_engines, **kwargs)
+    def init_cluster(self, n_engines:int=0): self.cluster = IppCluster(n=n_engines)
 
     def shutdown_cluster(self):
         '''Properly shuts down the ipyparallel cluster (of engines).'''
@@ -136,11 +132,10 @@ class Ddp():
         self.app_exit() # Cleanup existing app
 
         if self._app is None:
-            dv = self.cluster.px_view # shorthand for the DDP process group
-            print(f"Importing on cluster: {app.imports}", flush=True)
-            dv.execute(app.imports, block=True)
-            r = dv.apply_sync(app.initializer)
-            print(f"{appname}:\n", '\n'.join(r), sep='')
+            Config.Verbose and print(f"Importing on cluster: {app.imports}", flush=True)
+            self.cluster.px_view.execute(app.imports, block=True)
+            r = self.cluster.px_view.apply_sync(app.initializer)
+            Config.Verbose and print(f"{appname}:", *r, sep='\n')
             self._app = app
 
     def app_exit(self):
@@ -196,11 +191,9 @@ class Ddp():
         baseline_mem = self.meminfo() if gc else None
         try:
             ar = self.cluster.px_view.execute(cell, silent=False, block=False) # silent=False to capture transient output
-            watcher = self.StreamPrinter(ar.stdout) if (not quiet) else None
-
-            if watcher:
-                while not ar.ready(): # Simulate wait on blocking execution
-                    watcher(ar.stdout)
+            if not quiet:
+                watcher = self.StreamPrinter(ar.stdout)
+                while not ar.ready(): watcher(ar.stdout) # Simulate wait on blocking execution
                 watcher(ar.stdout)
                 ar.stdout = [] # already displayed, flush the streams.
 

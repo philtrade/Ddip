@@ -80,13 +80,12 @@ class IppDdp(Magics):
         args = parse_argstring(self.ddprep, line)
 
         if args.debug: Config.Debug = args.debug == "True"
+        if args.verbose: Config.Verbose = args.verbose == "True"
 
         if args.restart: self.ddpstop()
         if not self.ddp: self.init_ddp()
 
-        if args.verbose:
-            Config.Verbose = args.verbose == "True"
-            self.ddp.set_verbose(Config.Verbose)
+        self.ddp.set_verbose(Config.Verbose)
 
         if args.gpus:
             if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
@@ -115,7 +114,8 @@ class IppDdp(Magics):
 
         args = parse_argstring(self.ddpx, line)
 
-        print(f"%%ddpx {line}: Running cell on " + f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {self.ddp.gpus_str()})", flush=True)
+        if Config.Verbose:
+            print(f"%%ddpx {line}: Running cell on " + f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {self.ddp.gpus_str()})", flush=True)
         if args.local: self.shell.run_cell("%nop\n"+cell, silent = args.quiet)
         if args.local == 'only': return
 

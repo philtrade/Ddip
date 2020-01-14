@@ -147,8 +147,7 @@ class Ddp():
             self.cluster.px_view.apply_sync(self._app.finalizer)
             self._app = None
 
-    def gpus_str(self):
-        return ','.join(map(str, self.ddp_group))
+    def gpus_str(self): return ','.join(map(str, self.ddp_group))
 
     def new_group(self, gpus:List[int], appname:str=None, node_rank:int=0, world_size:int=0):
         '''Configure a torch distributed process group of GPUs on a ipyparallel cluster.
@@ -183,12 +182,11 @@ class Ddp():
         self.cluster.px_view.execute('exit_group_single()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
-    def meminfo(self):
-        return self.cluster.px_view.apply_async(meminfo).get_dict() if self.cluster.px_view else None
+    def _apply_async(self, f): return self.cluster.px_view.apply_async(f).get_dict() if self.cluster.px_view else None
 
-    def gc(self):
-        '''Calls gc.collect() and torch.cuda.empty_cache() if applicable.'''
-        return self.cluster.px_view.apply_async(freemem).get_dict() if self.cluster.px_view else None
+    def meminfo(self): return self._apply_async(meminfo)
+
+    def gc(self): return self._apply_async(freemem)
 
     def run_cell(self, cell, quiet:bool=False, gc:bool=True):
         baseline_mem = self.meminfo() if gc else None

@@ -112,7 +112,9 @@ class Ddp():
 
     def __del__(self): self.shutdown_cluster()
 
-    def set_verbose(self, verbose:bool): Config.Verbose = verbose
+    def set_verbose(self, verbose:bool):
+        Config.Verbose = verbose
+        if self._app: self.cluster.px_view.apply_sync(self._app.set_verbose, verbose)
 
     def init_cluster(self, n_engines:int=0): self.cluster = IppCluster(n=n_engines)
 
@@ -125,7 +127,7 @@ class Ddp():
 
     def app_init(self, appname:str):
         '''Configure additional application besides PyTorch op each ipyparallel engine process.
-        The application module must have a `initializer()` function.'''
+        The application module must define `initializer(), finalizer(), and set_verbose()` functions.'''
         app = importlib.import_module(f".{appname}", package=__package__)
         if app is None: raise NameError(f"Unknown app '{appname}' for Torch DDP. Have you installed {appname}.py?")
         
@@ -134,6 +136,7 @@ class Ddp():
         if self._app is None:
             Config.Verbose and print(f"Importing on cluster: {app.imports}", flush=True)
             self.cluster.px_view.execute(app.imports, block=True)
+            self.cluster.px_view.apply_sync(app.set_verbose, Config.Verbose)
             r = self.cluster.px_view.apply_sync(app.initializer)
             Config.Verbose and print(f"{appname}:", *r, sep='\n')
             self._app = app

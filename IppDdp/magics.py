@@ -12,10 +12,7 @@ from .torchDDP import Ddp
 this = sys.modules[__name__]
 this.defaults = { 'appname' : 'fastai-v1',}
 
-Config = SimpleNamespace(Debug = True, Verbose = True)
-
-def _debug(*args, **kwargs):
-    if Config.Debug: print(*args, file=sys.stderr, **kwargs)
+Config = SimpleNamespace(Verbose = True)
 
 @magics_class
 class IppDdp(Magics):
@@ -66,7 +63,7 @@ class IppDdp(Magics):
                 if args[0] == "on": args.pop(0)
                 self._autoddpx = "%%ddpx " + ' '.join(args)
                 if self.prepender not in hooks: hooks.append(self.prepender)
-        return f"Automatic DDP execution: {self._autoddpx}"
+        return f"Automatic DDP execution: {self._autoddpx} on GPUs {self.ddp.ddp_group}"
 
     @line_magic
     def ddpstop(self, line=''):
@@ -79,7 +76,6 @@ class IppDdp(Magics):
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', default=this.defaults['appname'], type=str)
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart all engine processes.")
-    @argument('-d', '--debug', dest='debug', nargs='?', type=str, const="True", choices=["True", "False"], help="Turn on debugging output.")
     @argument('-v', '--verbose', dest='verbose', nargs='?', type=str, const="True", choices=["True", "False"],help='print a message at each execution.')
     @line_magic
     def ddprep(self, line=''):
@@ -88,7 +84,6 @@ class IppDdp(Magics):
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
         args = parse_argstring(self.ddprep, line)
 
-        if args.debug: Config.Debug = args.debug == "True"
         if args.verbose: Config.Verbose = args.verbose == "True"
         if args.restart: self.ddpstop()
         if not self.ddp: self.init_ddp()

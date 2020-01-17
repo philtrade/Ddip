@@ -15,7 +15,7 @@ FastAI specific setup
 FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,
     Verbose = False, old_cbs = None, lr_find_rank = 0, pid = os.getpid())
 
-def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(f"Proc []", *args, **kwargs, flush=True)
+def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(f"Proc [FastaiSaver.pid]", *args, **kwargs, flush=True)
 
 def set_verbose(verbose:bool=True): FastaiSaver.Verbose = verbose
 
@@ -45,22 +45,24 @@ def to_non_distributed(learn:Learner):
     for t in dist_cb:
         for cb in learn.callbacks:
             if isinstance(cb, t): 
-                print_verbose(f"Removing callback {type(cb)} from learner.")
+                print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Removing callback {type(cb)} from learner.")
                 learn.callbacks.remove(cb)
 
 def lr_find_bypass(learn:Learner, *args, **kwargs):
     assert FastaiSaver.lr_find, "Original lr_find() not saved yet.  Was _distrib_Learner(True) called?"
 
-    to_non_distributed(learn)
     my_rank = rank_distrib()
     if my_rank == FastaiSaver.lr_find_rank:
+        # lr_find() can only run on a single GPU mode as of Jan 2020 (in DDP mode it will deadlock)
+        # Temporarily disable DDP training so that this GPU doesn't have to synch with other GPU
+        # until on_train_end().  Restore afterwards.
+        to_non_distributed(learn)
         print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Running lr_find() in non-DistributedDataParallel mode")
         FastaiSaver.lr_find(learn, *args, **kwargs)
+        learn.to_distributed(torch.cuda.current_device())
     else:
         print_verbose(f"Rank [{my_rank}] cannot run lr_find() in DDP mode (only Rank [{FastaiSaver.lr_find_rank}] can).")
         LRFinder(learn).on_train_end()
-
-    learn.to_distributed(torch.cuda.current_device())
 
 def silent_console(silent:bool=True):
     "Turn off console progress bar output."
@@ -75,10 +77,10 @@ imports = '\n'.join([ 'import fastai, fastai.torch_core, torch, fastprogress',
 
 def initializer():
     '''A few fastai_v1-specific housekeeping:
-    0. Set defaults.device to the proper device, due to a bug in fastai.torch_core.py
-        where the defaults.device is initialized without regard to the curren cuda device.
-    1. Limit standard output to only the RANK 0 process.
-    3. Intercept Learner constructor to call to_distributed() after Learner.__post_init__().
+    0. Fix defaults.device out of sync bug in fastai.torch_core.py
+    1. Limit progress bar standard output to only RANK 0 process.
+    3. Implicitly make all new Learner object DDP-ready upon instantiation by intercepting Learner.__post_init__().
+       (Defer the detour to to_distributed() till Learner.fit() time would break lr_find(), see lr_find_bypass() above. )
     '''
     import fastai.torch_core
     print_verbose(f"Entering fastai_init_ddp(): {os.getpid()}")

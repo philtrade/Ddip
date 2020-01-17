@@ -34,6 +34,13 @@ class IppDdp(Magics):
     def __del__(self):
         if self.ddp: self.ddp.shutdown_cluster()
 
+    def gpu_str2list(self, g_str:List[str]):
+        if 'all' in g_str:
+            gpus = list(range(torch.cuda.device_count()))
+        else:
+            gpus = list(OrderedDict.fromkeys([ int(g) for g in re.split(r',\s*|\s+', ','.join(g_str))]))
+        return gpus
+
     def prepender(self, lines:List[str]):
         '''Prepend automatic DDP execution cell magic, unless the cell begins with '%', i.e. an explicit magic. https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
         if self._autoddpx and lines and (not lines[0].startswith('%')):
@@ -51,11 +58,13 @@ class IppDdp(Magics):
         '''Todo: free memory after each run'''
         if line:
             hooks = self.shell.input_transformers_cleanup
-            if line.split(None,1)[0] == "off": # Unregister the prepender
+            args = line.split(None)
+            if args[0] == "off": # Unregister the prepender
                 self._autoddpx = None
                 while self.prepender in hooks: hooks.remove(self.prepender)
-            else: # Register the prepender, 
-                self._autoddpx = f"%%ddpx {line}"
+            else: # Register the prepender
+                if args[0] == "on": args.pop(0)
+                self._autoddpx = "%%ddpx " + ' '.join(args)
                 if self.prepender not in hooks: hooks.append(self.prepender)
         return f"Automatic DDP execution: {self._autoddpx}"
 
@@ -67,7 +76,7 @@ class IppDdp(Magics):
             self.ddp = None
 
     @magic_arguments()
-    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="comma or space seperated list of GPU ids, or 'all' to specify all GPUs available.")
+    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('-a', '--app', dest='appname', default=this.defaults['appname'], type=str)
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart all engine processes.")
     @argument('-d', '--debug', dest='debug', nargs='?', type=str, const="True", choices=["True", "False"], help="Turn on debugging output.")
@@ -81,15 +90,12 @@ class IppDdp(Magics):
 
         if args.debug: Config.Debug = args.debug == "True"
         if args.verbose: Config.Verbose = args.verbose == "True"
-
         if args.restart: self.ddpstop()
         if not self.ddp: self.init_ddp()
-
         self.ddp.set_verbose(Config.Verbose)
 
         if args.gpus:
-            if 'all' in args.gpus: gpus = list(range(torch.cuda.device_count()))
-            else: gpus = list(OrderedDict.fromkeys([ int(g) for g in re.split(r',\s*|\s+', ','.join(args.gpus))]))
+            gpus = self.gpu_str2list(args.gpus)
 
             if self.ddp.ddp_group == gpus: # Group desired is already there?
                 print(f"%ddprep DDP group unchanged, GPUs ids: {gpus}")
@@ -101,25 +107,30 @@ class IppDdp(Magics):
             self.shell.run_line_magic("pxconfig", "--verbose" if Config.Verbose else "--no-verbose")        
 
     @magic_arguments()
-    @argument('--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    @argument('--gc', dest='gc', action='store_true', help="Free up memory on each engine at the completion of the cell")
+    @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
+    @argument('-f', '--free', dest='gc', action='store_const', const=True, default=True,  help="Free up memory on each engine at the completion of the cell")
+    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids, or 'all' to specify all GPUs available.")
     @argument('--local', '-L', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
         help="Run the cell locally in this iPython, either before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to `too`")
     @cell_magic
     def ddpx(self, line, cell):
         '''%%ddpx - Parallel execution on cluster, allows transient output be displayed.'''
         if self.shell is None: raise RuntimeError("%%ddpx: Not in an ipython Interactive shell!")
-        assert self.ddp and self.ddp.ddp_group, "%%ddpx: DDP group does not exist yet.  Have you run %ddprep?"
+        assert self.ddp and self.ddp.ddp_group, "%%ddpx: DDP group does not exist yet.  Have you run %ddprep -g <gpu list>?"
         run_on = { 'too' : 'local ipython and ', 'only' : 'local ipython ONLY, SKIPPING '}
 
         args = parse_argstring(self.ddpx, line)
 
-        if Config.Verbose:
-            print(f"%%ddpx {line}: Running cell on " + f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {self.ddp.gpus_str()})", flush=True)
+        # where to run the cell
+        gpus = self.gpu_str2list(args.gpus) if args.gpus else self.ddp.ddp_group
+        where = f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {gpus})"
+        if Config.Verbose: print(f"%%ddpx {line}: Running cell on {where}", flush=True)
+
+        # If --local, run in local ipython process/namespace first, then on the specified GPUs.
         if args.local: self.shell.run_cell("%nop\n"+cell, silent = args.quiet)
         if args.local == 'only': return
 
-        self.ddp.run_cell(cell, quiet=args.quiet, gc=args.gc)
+        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, gc=args.gc)
         
     @line_magic
     def ddpobj(self, line:str=''):

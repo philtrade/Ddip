@@ -13,16 +13,11 @@ from fastprogress.fastprogress import master_bar, progress_bar, force_console_be
 FastAI specific setup
 '''
 FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,
-    Verbose = False, old_cbs = None, lr_finder_GPUs = {0})
+    Verbose = False, old_cbs = None, lr_find_rank = 0, pid = os.getpid())
 
-def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(*args, **kwargs, flush=True)
+def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(f"Proc []", *args, **kwargs, flush=True)
 
 def set_verbose(verbose:bool=True): FastaiSaver.Verbose = verbose
-
-def lr_finder_ids(gpus:List[int]): #To-do: use set operations to allow removal.
-    for i in gpus:
-        if i < torch.cuda.device_count(): FastaiSaver.lr_find_GPUs.add(i)
-    return FastaiSaver.lr_find_GPUs
 
 def _post_init_DDP(learner):
     '''Make a freshly created Learner object to run in DDP mode when training.
@@ -49,17 +44,20 @@ def to_non_distributed(learn:Learner):
     dist_cb = {DistributedTrainer, DistributedRecorder }
     for t in dist_cb:
         for cb in learn.callbacks:
-            if isinstance(cb, t):
+            if isinstance(cb, t): 
                 print_verbose(f"Removing callback {type(cb)} from learner.")
                 learn.callbacks.remove(cb)
 
 def lr_find_bypass(learn:Learner, *args, **kwargs):
     assert FastaiSaver.lr_find, "Original lr_find() not saved yet.  Was _distrib_Learner(True) called?"
-    to_non_distributed(learn)
 
-    if rank_distrib() in FastaiSaver.lr_finder_GPUs:
+    to_non_distributed(learn)
+    my_rank = rank_distrib()
+    if my_rank == FastaiSaver.lr_find_rank:
+        print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Running lr_find() in non-DistributedDataParallel mode")
         FastaiSaver.lr_find(learn, *args, **kwargs)
     else:
+        print_verbose(f"Rank [{my_rank}] cannot run lr_find() in DDP mode (only Rank [{FastaiSaver.lr_find_rank}] can).")
         LRFinder(learn).on_train_end()
 
     learn.to_distributed(torch.cuda.current_device())
@@ -84,10 +82,11 @@ def initializer():
     '''
     import fastai.torch_core
     print_verbose(f"Entering fastai_init_ddp(): {os.getpid()}")
-    if torch.cuda.is_available(): torch.cuda.set_device(torch.cuda.current_device()) # work-around for the fastai.torch_core.defaults.device maybe out of sync
+    # work-around for the fastai.torch_core.defaults.device maybe out of sync
+    if torch.cuda.is_available(): torch.cuda.set_device(torch.cuda.current_device())
     silence = rank_distrib() != 0
     silent_console(silence) # limit console output to only rank 0 GPU
-    ddpify_Learner_class() # Learner class to call to
+    ddpify_Learner_class() # Patch the Learner class to route/bypass some methods
     return f"[Process {os.getpid()}] Rank {rank_distrib()} fastai initialized for distributed data parallel."
 
 def finalizer():

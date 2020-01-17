@@ -188,10 +188,11 @@ class Ddp():
 
     def gc(self): return self._apply_async(freemem)
 
-    def run_cell(self, cell, quiet:bool=False, gc:bool=True):
+    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False, gc:bool=True):
         baseline_mem = self.meminfo() if gc else None
+        v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
         try:
-            ar = self.cluster.px_view.execute(cell, silent=False, block=False) # silent=False to capture transient output
+            ar = v.execute(cell, silent=False, block=False) # silent=False to capture transient output
             if not quiet:
                 watcher = self.StreamPrinter(ar.stdout)
                 while not ar.ready(): watcher(ar.stdout) # Simulate wait on blocking execution

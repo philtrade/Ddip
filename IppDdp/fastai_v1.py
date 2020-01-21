@@ -15,7 +15,7 @@ FastAI specific setup
 FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,
     Verbose = False, old_cbs = None, lr_find_rank = 0, pid = os.getpid())
 
-def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(f"Proc [FastaiSaver.pid]", *args, **kwargs, flush=True)
+def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(f"Proc [{FastaiSaver.pid}]", *args, **kwargs, flush=True)
 
 def set_verbose(verbose:bool=True): FastaiSaver.Verbose = verbose
 

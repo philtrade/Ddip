@@ -1,4 +1,4 @@
-import sys, time, os, re, ipyparallel, torch, atexit, subprocess, signal, importlib
+import sys, time, os, re, ipyparallel, torch, atexit, subprocess, signal, importlib, psutil
 from ipyparallel import AsyncResult
 from collections import OrderedDict
 from typing import List
@@ -44,8 +44,17 @@ def freemem():
 class IppCluster():
     """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
     cid = "ippdpp_c"
+    cid_flag = f"--cluster-id={cid}"
+
+    @classmethod
+    def find_cluster_proc(cls):
+        for p in psutil.process_iter():
+            if p.cmdline()[1].endswith("ipcluster") and (IppCluster.cid_flag in p.cmdline()):
+                return p.pid()
+        return None
+
     def __init__(self, n:int=0, engine_wait:float=15.0):
-        popen_cmd = ["ipcluster", "start", f"--cluster-id={IppCluster.cid}", "--daemonize"]
+        popen_cmd = ["ipcluster", "start", IppCluster.cid_flag, "--daemonize"]
         if n > 0: popen_cmd.append(f"--n={n}")
 
         cluster_proc = subprocess.Popen(popen_cmd) # Ignore stdout and stderr from ipcluster
@@ -66,7 +75,7 @@ class IppCluster():
 
                 def carefree_kill():
                     '''cleanup routine not tied to the object itself, ensure the object can be garbage collected after 'del' '''
-                    subprocess.call(["ipcluster", "stop", f"--cluster-id={IppCluster.cid}"])
+                    subprocess.call(["ipcluster", "stop", IppCluster.cid_flag])
                     try:
                         os.kill(e_ppid, signal.SIGINT)
                         Config.Verbose and print("The cluster takes a few secons to shut down....", flush=True, file=sys.stderr)
@@ -81,6 +90,8 @@ class IppCluster():
                 engine_wait -= 1
 
     def __del__(self): self.shutdown()
+
+    def info(self): return f"cluster pid: {self.e_ppid}, engine pids: {self.e_pids}"
 
     def interrupt_engines(self, eids:List[int]):
         '''Send SIGINT to a list of ipyparallel engines, as if sending a keyboard interrupt to ipython running on the engine process.
@@ -115,6 +126,13 @@ class Ddp():
     def set_verbose(self, verbose:bool):
         Config.Verbose = verbose
         if self._app: self.cluster.px_view.apply_sync(self._app.set_verbose, verbose)
+
+    def info(self):
+        cluster_info = "Cluster processes:"
+        cluster_info += f"{self.cluster.info()}" if self.cluster else f"checking ipcluster process using pstuil: {IppCluster.find_cluster_proc()}"
+        ddp_info = f"DDP group: {[ f'Rank {i}: GPU{g}' for i, g in enumerate(self.ddp_group) ]}"
+        app_info = f"DDP application: {self._app.__name__ if self._app else 'None'}"
+        return '\n'.join([cluster_info, ddp_info, app_info])
 
     def init_cluster(self, n_engines:int=0): self.cluster = IppCluster(n=n_engines)
 

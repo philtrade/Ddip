@@ -130,7 +130,7 @@ class DdpMagic(Magics):
         # If the cell needs to be executed in local namespace first, mark it so that
         # preprender() won't modify it, and simply pass it onto the rest of the ipython cell execution chain.
         # Otherwise, it'll come back here --- infinite loop.
-        if args.local: self.shell.run_cell(f"{DdpMagic.__no_mod}\n"+cell, silent = args.quiet)
+        if args.local: self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
         if args.local == 'only': return
 
         self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, gc=args.gc)

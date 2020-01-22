@@ -6,7 +6,7 @@ from typing import List
 from torch.distributed import *
 from types import SimpleNamespace
 
-Config = SimpleNamespace(Debug = True, Verbose = True, pid = os.getpid())
+Config = SimpleNamespace(Debug = True, Verbose = True, AutoGC = True, pid = os.getpid())
 
 def _debug(*args, **kwargs):
     if Config.Debug: print(*args, file=sys.stderr, **kwargs)
@@ -39,11 +39,9 @@ def meminfo():
     return [torch.cuda.memory_cached(), torch.cuda.memory_allocated()] if torch.cuda.is_available() else None
 
 def freemem():
-    '''Run gc.collect() and torch.cuda.empty_cache() if applicable.'''
     import gc
     gc.collect()
     if torch.cuda.is_available(): torch.cuda.empty_cache()
-    return meminfo()
 
 class IppCluster():
     """Start/stop of an ipyparallel cluster aka 'ipcluster, and access to cluster engines."""
@@ -208,11 +206,10 @@ class Ddp():
 
     def meminfo(self): return self._apply_async(meminfo)
 
-    def gc(self): return self._apply_async(freemem)
-
-    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False, gc:bool=True):
-        baseline_mem = self.meminfo() if gc else None
+    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False, push_dict=None):
+        baseline_mem = self.meminfo() if Config.AutoGC else None
         v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
+        if push_dict: v.update(push_dict)
         try:
             ar = v.execute(cell, silent=False, block=False) # silent=False to capture transient output
             if not quiet:
@@ -229,10 +226,7 @@ class Ddp():
         except CompositeError as e:
             for i,o in enumerate(ar.outputs):
                 if len(o) > 0: ar._republish_displaypub(o[0],i)
-            print_verbose(f"Remote exceptions: {e}", filesys.stderr)
+            print_verbose(f"Remote exceptions: {e}", file=sys.stderr)
 
-
-        if gc and (self.meminfo() != baseline_mem):
-            m = self.gc() # ddp.gc() returns a dict keyed by engine id
-            Config.Verbose and print("GPU\tCached\tUsed", *[ f"{i}\t{m[i][0]}\t{m[i][1]}" for i in m ], sep='\n', flush=True)
+        if Config.AutoGC and (self.meminfo() != baseline_mem): self._apply_async(freemem)
         

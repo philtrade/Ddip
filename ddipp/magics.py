@@ -9,10 +9,7 @@ from IPython.core.magic_arguments import argument, magic_arguments, parse_argstr
 from ipyparallel import AsyncResult
 from .torchDDP import Ddp
 
-this = sys.modules[__name__]
-this.defaults = { 'appname' : 'fastai-v1',}
-
-Config = SimpleNamespace(Verbose = True)
+Config = SimpleNamespace(Verbose = True, DefaultApp = 'fastai-v1')
 
 @magics_class
 class DdpMagic(Magics):
@@ -74,7 +71,7 @@ class DdpMagic(Magics):
 
     @magic_arguments()
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids, or 'all' to specify all GPUs available.")
-    @argument('-a', '--app', dest='appname', default=this.defaults['appname'], type=str)
+    @argument('-a', '--app', dest='appname', default=Config.DefaultApp, type=str)
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart the ipyparallel cluster.")
     @argument('-k', '--kill', dest='kill', action="store_const", const=True, help="Kill the ipyparallel cluster.")
     @argument('-i', '--info', dest='info', action="store_const", const=True, help="Show current configuration info.")
@@ -109,9 +106,8 @@ class DdpMagic(Magics):
 
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    @argument('-f', '--free', dest='gc', action='store_const', const=True, default=True,  help="Free up memory on each engine at the completion of the cell")
-    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids, or 'all' to specify all GPUs available.")
-    @argument('--local', '-L', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
+    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="List of notebook variables (local namespace) to push to the DDP group, before execution of the cell.")
+    @argument('-l', '--local', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
         help="Run the cell locally in this iPython, either before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to `too`")
     @cell_magic
     def dip(self, line, cell):
@@ -123,7 +119,7 @@ class DdpMagic(Magics):
         args = parse_argstring(self.dip, line)
 
         # where to run the cell
-        gpus = self.gpu_str2list(args.gpus) if args.gpus else self.ddp.ddp_group
+        gpus = self.ddp.ddp_group
         where = f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {gpus})"
         if Config.Verbose: print(f"%%dip {line}: Running cell on {where}", flush=True)
 
@@ -133,7 +129,8 @@ class DdpMagic(Magics):
         if args.local: self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
         if args.local == 'only': return
 
-        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, gc=args.gc)
+        push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars } if args.push_vars else None
+        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, push_dict=push_dict)
         
     @line_magic
     def dipper(self, line:str=''):

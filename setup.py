@@ -6,15 +6,16 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="IppDdp-philtrade",
+    name="ddipp-philtrade",
     version="0.1",
     author='Phillip K.S. Chu',
     author_email='philtrade@winphil.net',
     url='https://github.com/philtrade/ipyparallel-torchddp',
-    description="Execution harness of Fastai in PyTorch Distributed Data Parallel (DDP) mode using ipyparallel in iPython",
+    description="Harness Fastai Distributed Data Parallel (DDP) training in iPython/Jupyter notebook",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=setuptools.find_packages(),
+    packages=['ddipp'],
+    install_requires=['ipyparallel', 'torch', 'fastai'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache License 2.0",

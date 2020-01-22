@@ -229,7 +229,7 @@ class Ddp():
         except CompositeError as e:
             for i,o in enumerate(ar.outputs):
                 if len(o) > 0: ar._republish_displaypub(o[0],i)
-            print_verbose(f"Remote exceptions: {e.message}", filesys.stderr)
+            print_verbose(f"Remote exceptions: {e}", filesys.stderr)
 
 
         if gc and (self.meminfo() != baseline_mem):

@@ -9,7 +9,7 @@ from IPython.core.magic_arguments import argument, magic_arguments, parse_argstr
 from ipyparallel import AsyncResult
 from .torchDDP import Ddp
 
-Config = SimpleNamespace(Verbose = True, DefaultApp = 'fastai-v1')
+Config = SimpleNamespace(Verbose = True, DefaultApp = 'fastai_v1')
 
 @magics_class
 class DdpMagic(Magics):

@@ -3,7 +3,7 @@ from collections import OrderedDict
 from typing import List
 from types import SimpleNamespace
 from torch.distributed import *
-from IPython.core.magic import Magics, magics_class, cell_magic, line_magic
+from IPython.core.magic import Magics, magics_class, cell_magic, line_magic, line_cell_magic
 from IPython.core.display import clear_output
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
 from ipyparallel import AsyncResult
@@ -47,20 +47,29 @@ class DdpMagic(Magics):
             lines.insert(0, f"{self._autodip}\n")
         return lines
 
+    @magic_arguments()
+
     @line_magic
+    @argument('OnOff', type=str, choices=["on", "off"], nargs='?', help="Turn on auto-%%dip for the cells after this one.")
+    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="List of notebook variables (local namespace) to push to the DDP group, before execution of the cell.")
     def autodip(self, line:str):
         '''Prepend %%dip to subsequent cells so that they will run on the distributed data parallel cluster.'''
         '''Todo: free memory after each run'''
-        if line:
-            hooks = self.shell.input_transformers_cleanup
-            args = line.split(None)
-            if args[0] == "off": # Unregister the prepender
-                self._autodip = None
-                while self.prepender in hooks: hooks.remove(self.prepender)
-            else: # Register the prepender
-                if args[0] == "on": args.pop(0)
-                self._autodip = "%%dip " + ' '.join(args)
-                if self.prepender not in hooks: hooks.append(self.prepender)
+        args = parse_argstring(self.autodip, line)
+        hooks = self.shell.input_transformers_cleanup
+
+        if args.push_vars:
+            push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars }
+            Config.Verbose and print(f"Pushing parameters to engines namespace: {args.push_vars}", flush=True)
+            self.ddp.push(push_dict)
+
+        if args.OnOff == "off": # Unregister the prepender
+            self._autodip = None
+            while self.prepender in hooks: hooks.remove(self.prepender)
+        elif args.OnOff == "on": # Register the prepender
+            self._autodip = "%%dip"
+            if self.prepender not in hooks: hooks.append(self.prepender)
+
         return f"{self._autodip or '%autodip is Off'}"
 
     def _stopdip(self, line=''):
@@ -106,11 +115,10 @@ class DdpMagic(Magics):
 
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="List of notebook variables (local namespace) to push to the DDP group, before execution of the cell.")
     @argument('-l', '--local', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
         help="Run the cell locally in this iPython, either before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to `too`")
-    @cell_magic
-    def dip(self, line, cell):
+    @line_cell_magic
+    def dip(self, line, cell=None):
         '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''
         if self.shell is None: raise RuntimeError("%%dip: Not in an ipython Interactive shell!")
         assert self.ddp and self.ddp.ddp_group, "%%dip: DDP group does not exist yet.  Have you run %ddprep -g <gpu list>?"
@@ -128,9 +136,7 @@ class DdpMagic(Magics):
         # Otherwise, it'll come back here --- infinite loop.
         if args.local: self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
         if args.local == 'only': return
-
-        push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars } if args.push_vars else None
-        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, push_dict=push_dict)
+        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet)
         
     @line_magic
     def dipper(self, line:str=''):

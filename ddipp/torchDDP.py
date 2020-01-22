@@ -206,10 +206,13 @@ class Ddp():
 
     def meminfo(self): return self._apply_async(meminfo)
 
-    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False, push_dict=None):
+    def push(self, push_dict, gpus:List[int]=None):
+        v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
+        v.update(push_dict)
+
+    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False):
         baseline_mem = self.meminfo() if Config.AutoGC else None
         v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
-        if push_dict: v.update(push_dict)
         try:
             ar = v.execute(cell, silent=False, block=False) # silent=False to capture transient output
             if not quiet:

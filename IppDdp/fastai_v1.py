@@ -49,20 +49,27 @@ def to_non_distributed(learn:Learner):
                 learn.callbacks.remove(cb)
 
 def lr_find_bypass(learn:Learner, *args, **kwargs):
+    ''' Execute the real lr_find() only on rank-0 process, as this operation doesn't
+    make sense in DDP mode yet.  Temporarily exit the distributed trainer mode before that,
+    and restore afterwards.
+    '''
     assert FastaiSaver.lr_find, "Original lr_find() not saved yet.  Was _distrib_Learner(True) called?"
+
 
     my_rank = rank_distrib()
     if my_rank == FastaiSaver.lr_find_rank:
-        # lr_find() can only run on a single GPU mode as of Jan 2020 (in DDP mode it will deadlock)
-        # Temporarily disable DDP training so that this GPU doesn't have to synch with other GPU
-        # until on_train_end().  Restore afterwards.
-        to_non_distributed(learn)
-        print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Running lr_find() in non-DistributedDataParallel mode")
+        to_non_distributed(learn)  # Temporarily remove DistributedTrainer and DistributedRecorder from the callbacks
+        ws = os.environ.get('WORLD_SIZE', 0) # Shrink WORLD_SIZE to 1 such that the proc won't create a distributed barrier
+        if ws: os.environ['WORLD_SIZE'] = str(1) # see torch_core.distrib_barrier() and Learner.load().
+        print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Running lr_find() in non DDP mode")
         FastaiSaver.lr_find(learn, *args, **kwargs)
+        if ws: os.environ['WORLD_SIZE'] = ws # restore 
         learn.to_distributed(torch.cuda.current_device())
     else:
         print_verbose(f"Rank [{my_rank}] cannot run lr_find() in DDP mode (only Rank [{FastaiSaver.lr_find_rank}] can).")
-        LRFinder(learn).on_train_end()
+        # LRFinder(learn).on_train_end()
+
+
 
 def silent_console(silent:bool=True):
     "Turn off console progress bar output."

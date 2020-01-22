@@ -1,14 +1,18 @@
 import sys, time, os, re, ipyparallel, torch, atexit, subprocess, signal, importlib, psutil
 from ipyparallel import AsyncResult
+from ipyparallel.error import CompositeError
 from collections import OrderedDict
 from typing import List
 from torch.distributed import *
 from types import SimpleNamespace
 
-Config = SimpleNamespace(Debug = True, Verbose = True)
+Config = SimpleNamespace(Debug = True, Verbose = True, pid = os.getpid())
 
 def _debug(*args, **kwargs):
     if Config.Debug: print(*args, file=sys.stderr, **kwargs)
+
+def print_verbose(*args, **kwargs):
+    if Config.Verbose: print(f"Proc [{Config.pid}]", *args, **kwargs, flush=True)
 
 def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
     '''Join the current process to a PyTorch distributed group.
@@ -216,12 +220,17 @@ class Ddp():
                 while not ar.ready(): watcher(ar.stdout) # Simulate wait on blocking execution
                 watcher(ar.stdout)
                 ar.stdout = [] # already displayed, flush the streams.
-
         except KeyboardInterrupt:
             Config.Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
             self.cluster.interrupt_engines(self.ddp_group)
 
-        ar.display_outputs()
+        try:
+            ar.display_outputs(groupby='order')
+        except CompositeError as e:
+            for i,o in enumerate(ar.outputs):
+                if len(o) > 0: ar._republish_displaypub(o[0],i)
+            print_verbose(f"Remote exceptions: {e.message}", filesys.stderr)
+
 
         if gc and (self.meminfo() != baseline_mem):
             m = self.gc() # ddp.gc() returns a dict keyed by engine id

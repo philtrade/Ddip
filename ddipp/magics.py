@@ -73,7 +73,7 @@ class DdpMagic(Magics):
             self.ddp = None
 
     @magic_arguments()
-    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids, or 'all' to specify all GPUs available.")
+    @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids to form the DDP group. Use 'all' to specify all available GPUS.")
     @argument('-a', '--app', dest='appname', default=Config.DefaultApp, type=str)
     @argument('-r', '--restart', dest='restart', action="store_const", const=True, help="Restart the ipyparallel cluster.")
     @argument('-k', '--kill', dest='kill', action="store_const", const=True, help="Kill the ipyparallel cluster.")
@@ -110,7 +110,8 @@ class DdpMagic(Magics):
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('-t', '--to', dest='where', nargs=None, type=str, choices=["gpu", "local", "both"], default="gpu", help="Where to run the cell.")
-    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="List of notebook variables (local namespace) to push to the DDP group, before execution of the cell.")
+    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="Push a list of variables from local ipython to the DDP group processes.  When invoked as a cell magic %%, it is done before execution of the cell.")
+    @argument('-S', '--see', dest='see', type=str, nargs='+', help="Specify which processes' output to show, by GPU ids. List of integers or 'all'. Default to 0.")
     @line_cell_magic
     def dip(self, line, cell=None):
         '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''
@@ -139,7 +140,8 @@ class DdpMagic(Magics):
             self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
             if args.where == 'local': return
 
-        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet)
+        see_outputs = self.gpu_str2list(args.see) if args.see else None
+        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)
         
     @line_magic
     def dipper(self, line:str=''):

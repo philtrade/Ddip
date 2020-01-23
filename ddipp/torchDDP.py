@@ -6,7 +6,9 @@ from typing import List
 from torch.distributed import *
 from types import SimpleNamespace
 
-Config = SimpleNamespace(Debug = True, Verbose = True, AutoGC = True, pid = os.getpid())
+Config = SimpleNamespace(Debug = True, Verbose = True,
+    AutoGC = True, pid = os.getpid(), See = [0],
+    )
 
 def _debug(*args, **kwargs):
     if Config.Debug: print(*args, file=sys.stderr, **kwargs)
@@ -113,7 +115,9 @@ class Ddp():
             self._counts = [0] * len(streams)
             self._pause = kwargs.get('pause', self._default_streaming_pause)
         def __call__(self, streams, *args, **kwargs):
-            for i, st in enumerate(streams):
+            see = kwargs.get('see', [ *range(len(streams)) ])
+            for i in see: # Only display interested stream
+                st = streams[i]
                 if (len(st) > self._counts[i]):
                     print(st[self._counts[i]:], end='', flush=True)
                     self._counts[i] = len(st)
@@ -210,21 +214,30 @@ class Ddp():
         v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
         v.update(push_dict)
 
-    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False):
+    def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False, see:List[int]=None):
         baseline_mem = self.meminfo() if Config.AutoGC else None
         v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
+        if see is None: see = Config.See # Display output of these GPUs.
         try:
             ar = v.execute(cell, silent=False, block=False) # silent=False to capture transient output
             if not quiet:
                 watcher = self.StreamPrinter(ar.stdout)
-                while not ar.ready(): watcher(ar.stdout) # Simulate wait on blocking execution
-                watcher(ar.stdout)
-                ar.stdout = [] # already displayed, flush the streams.
+                while not ar.ready(): watcher(ar.stdout, see) # Simulate wait on blocking execution
+                watcher(ar.stdout, see)
+                ar.stdout = [] # already displayed, flush the streams, so that display_outputs() below won't re-display them again.
         except KeyboardInterrupt:
             Config.Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
             self.cluster.interrupt_engines(self.ddp_group)
 
         try:
+            # for s in [ar.stdout, ar.stderr, ar.outputs, ar.execute_result, ]:
+            ar.engine_id = [ ar.engine_id[i] for i in filter(lambda x: x < len(ar.engine_id), see) ]
+            ar.stdout = [ ar.stdout[i] for i in filter(lambda x: x < len(ar.stdout), see) ]
+            ar.stderr = [ ar.stderr[i] for i in filter(lambda x: x < len(ar.stderr), see) ]
+            ar.outputs = [ ar.outputs[i] for i in filter(lambda x: x < len(ar.outputs), see) ]
+            if ar._result: ar._result = [ ar._result[i] for i in filter(lambda x: x < len(ar._result), see) ]
+            if ar.execute_result: ar.execute_result = [ ar.execute_result[i] for i in filter(lambda x: x < len(ar.execute_result), see) ]
+
             ar.display_outputs(groupby='order')
         except CompositeError as e:
             for i,o in enumerate(ar.outputs):

@@ -15,7 +15,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=['ddipp'],
-    install_requires=['ipyparallel', 'torch', 'fastai'],
+    install_requires=['pillow<7','ipyparallel', 'torch', 'fastai'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache License 2.0",

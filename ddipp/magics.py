@@ -64,7 +64,7 @@ class DdpMagic(Magics):
             self._autodip = "%%dip"
             if self.prepender not in hooks: hooks.append(self.prepender)
 
-        return f"{self._autodip or '%autodip is Off'}"
+        print(f"Auto Execution on DDP group: {'on' if self._autodip else 'off'}", flush=True)
 
     def _stopdip(self, line=''):
         if self.ddp:

@@ -48,9 +48,9 @@ class DdpMagic(Magics):
         return lines
 
     @magic_arguments()
-
-    @line_magic
+    @argument('-a', '--args', type=str, nargs=None, help="In '-one -quoted string', flags and arguments to pass to %%dip.")
     @argument('OnOff', type=str, choices=["on", "off"], nargs='?', help="Turn on auto-%%dip for the cells after this one.")
+    @line_magic
     def autodip(self, line:str):
         '''Prepend %%dip to subsequent cells so that they will run on the distributed data parallel cluster.'''
         '''Todo: free memory after each run'''
@@ -62,9 +62,10 @@ class DdpMagic(Magics):
             while self.prepender in hooks: hooks.remove(self.prepender)
         elif args.OnOff == "on": # Register the prepender
             self._autodip = "%%dip"
+            if args.args: self._autodip += " " + args.args.replace('"', '')
             if self.prepender not in hooks: hooks.append(self.prepender)
 
-        print(f"Auto Execution on DDP group: {'on' if self._autodip else 'off'}", flush=True)
+        print(f"Auto Execution on DDP group: {'on, will run cell as ' + self._autodip if self._autodip else 'Off'}", flush=True)
 
     def _stopdip(self, line=''):
         if self.ddp:

@@ -51,17 +51,11 @@ class DdpMagic(Magics):
 
     @line_magic
     @argument('OnOff', type=str, choices=["on", "off"], nargs='?', help="Turn on auto-%%dip for the cells after this one.")
-    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="List of notebook variables (local namespace) to push to the DDP group, before execution of the cell.")
     def autodip(self, line:str):
         '''Prepend %%dip to subsequent cells so that they will run on the distributed data parallel cluster.'''
         '''Todo: free memory after each run'''
         args = parse_argstring(self.autodip, line)
         hooks = self.shell.input_transformers_cleanup
-
-        if args.push_vars:
-            push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars }
-            Config.Verbose and print(f"Pushing parameters to engines namespace: {args.push_vars}", flush=True)
-            self.ddp.push(push_dict)
 
         if args.OnOff == "off": # Unregister the prepender
             self._autodip = None
@@ -115,27 +109,36 @@ class DdpMagic(Magics):
 
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    @argument('-l', '--local', dest='local', nargs='?', type=str, choices=["too", "only"], const='too',
-        help="Run the cell locally in this iPython, either before running on the cluster, or 'only' locally and don't run on cluster at all.  Default to `too`")
+    @argument('-t', '--to', dest='where', nargs=None, type=str, choices=["gpu", "local", "both"], default="gpu", help="Where to run the cell.")
+    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="List of notebook variables (local namespace) to push to the DDP group, before execution of the cell.")
     @line_cell_magic
     def dip(self, line, cell=None):
         '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''
         if self.shell is None: raise RuntimeError("%%dip: Not in an ipython Interactive shell!")
         assert self.ddp and self.ddp.ddp_group, "%%dip: DDP group does not exist yet.  Have you run %ddprep -g <gpu list>?"
-        run_on = { 'too' : 'local ipython and ', 'only' : 'local ipython ONLY, SKIPPING '}
 
         args = parse_argstring(self.dip, line)
 
-        # where to run the cell
+        # '--push var1 var2 ...': Export variables from local namespace to DDP group.
+        if args.push_vars:
+            push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars }
+            Config.Verbose and print(f"Pushing parameters to engines namespace: {args.push_vars}", flush=True)
+            self.ddp.push(push_dict)
+
+        if cell is None: return
+
+        # '--to [gpu|local|both]': Where to run the cell
         gpus = self.ddp.ddp_group
-        where = f"{run_on.get(args.local,'')}" + f"cluster (GPUs: {gpus})"
+        run_on = { 'gpu': ' ', 'both' : 'local ipython and ', 'local' : 'local ipython ONLY, SKIPPING '}
+        where = f"{run_on.get(args.where,'')}" + f"DDP group (GPUs: {gpus})"
         if Config.Verbose: print(f"%%dip {line}: Running cell on {where}", flush=True)
 
-        # If the cell needs to be executed in local namespace first, mark it so that
-        # preprender() won't modify it, and simply pass it onto the rest of the ipython cell execution chain.
-        # Otherwise, it'll come back here --- infinite loop.
-        if args.local: self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
-        if args.local == 'only': return
+        if (args.where == 'local') or (args.where == 'both'):
+            # To run a cell inside "%%dip" locally, insert a "stop sign" in the first line,
+            # it'll then bypass any %autodip cell transformer, and won't end up here again.
+            self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
+            if args.where == 'local': return
+
         self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet)
         
     @line_magic

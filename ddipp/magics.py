@@ -16,7 +16,7 @@ class DdpMagic(Magics):
     '''An iPython extension to harness the pytorch distributed data parallel (DDP)
        execution over the ipyparallel cluster.
     '''
-    _no_mod = "#DdpMagic_NO_MOD"
+    _no_mod = "#dip_locally"
 
     def __init__(self, shell:IPython.InteractiveShell, **kwargs):
         super(DdpMagic, self).__init__(shell=shell) # will setup self.shell
@@ -42,7 +42,9 @@ class DdpMagic(Magics):
         return gpus
 
     def prepender(self, lines:List[str]):
-        '''Prepend automatic DDP execution cell magic, unless the cell begins with '%', i.e. an explicit magic. https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
+        '''Prepend automatic DDP execution cell magic, unless the cell begins with '%',
+        or with a known marker, to avoid infinite loop.
+        See https://github.com/jdanbrown/potoo/blob/master/potoo/default_magic_magic.py'''
         if self._autodip and lines and (not lines[0].startswith('%')) and (not lines[0].startswith(DdpMagic._no_mod)):
             lines.insert(0, f"{self._autodip}\n")
         return lines

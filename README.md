@@ -1,16 +1,29 @@
 # ipyparallel-torchddp
-IPython magics to use ipyparallel (IPP) to harness PyTorch distributed data parallel training (DDP).
-The FastAI course-V3 is the first use case.
+
+
+This project was inspired by 3 impactful tools by the open source community:
+
+- The `fastai` library that comes with completely free video lessons and interactive Jupyter notebooks to speed up learning, to make programming neural network applications a breeze.
+
+- Multiple GPUs can speed up the training of complex models, and PyTorch's Distributed Data Parallel (DDP) mode is one of the effective configuration.  To use DDP inside FastAi is quite trivial in batch script mode, **but not supported in the FastAi's interactive Jupyter notebooks**, as of late 2019.
+
+- `ipyparallel` is a fairely mature iPython extension to manage cluster of distributed processes to handle parallel executions.
+
+`ddipp`, an iPython extension, attempts to fill the gap, by using `ipyparallel` to facilitate aplication to use `PyTorch DDP` inside Jupyter notebooks. Specifically as a start, to support `fastai`'s course-v3 notebooks in DDP mode.
+
+
+Platform tested: single host with multiple GPU, Ubuntu linux + PyTorch + Python 3, fastai v1 and fastai course-v3.
+
+To know more about iPython extensions/magics, PyTorch DDP, and ipyparallel:
+
+- 
+-
+- 
+
 
 ## Installations
 
 `pip install git+https://github.com/philtrade/ipyparallel-torchddp.git`
-
-## Useful Concepts:
-
-*Add links*
-* Line and cell magics in iPython/Jupyter notebook
-* Using Distributed Data Parallel training mode in PyTorch and Fastai
 
 ## Usage
 
@@ -21,43 +34,55 @@ The FastAI course-V3 is the first use case.
     ```
 ### Commands/Magics in iPython/Jupyter Notebook
 
-* Initialize/Stopping/Restarting a Distributed Data Parallel (DDP) group:
+* Starting/Stopping/Restarting a Distributed Data Parallel (DDP) group:
 
     ```
+    # Use all available GPUs, initialize fastai library to run in notebook, turn on verbose output
+
     %makedip -g all -a fastai_v1 --verbose True
+
     ```
 
-* Pushing variables from the notebook iPython namespace, to the DDP group
+* Pushing variables from the notebook "local" namespace, to the DDP group namespace:
 
     ```
     %dip --push var1 var2 var3..... varN
     ```
 
-* Execute a cell in the DDP group (remote):
+* Execute a notebook cell in parallel across the DDP processes (each has its own designated GPU):
     ```
     %%dip # Add this to the first line of a notebook cell
-    <code>
+    <code to be run in parallel on multiple processes>
     ```
 
-* Execute a cell both in the notebook namespace (local) and in the DDP group (remote):
+* Execute a cell in **both** the notebook and across DDP processes:
     ```
     %%dip --to both
+
+    # Execute this cell first in local notebook, then in parallel across DDP processes
+    
     from fastai.vision import *
     import os
     ```
 
-* Turn on/off automatic execution in the DDP group:
+* Turn on/off automatic parallel/DDP execution:
     ```
-    %autodip [on or off] [optional flags passed to %%dip]
+    %autodip on [optional flags passed to %%dip]
+    ```
+    ```
+    < %%dip [optoinal flags] is prepended to the cells implicitly, and will be executed in the remote DDP group >
 
-    < all subsequent cells are executed in the remote DDP group only, as if every cell starts with %%dip on the first line>
+    [Subsequent cells will run in parallel, across the DDP processes]
     ```
 
-* In the middle when `%autodip` is on, want to execute a cell locally in the notebook namespace:
-
+* To halt the automatic parallel/DDP exeuction:
     ```
-    %%dip --to local
-    <cell to be run only in local namespace, regardless %autodip is on or off>
+    %autodip off  # Subsequent cells run in local notebook namespace again.  
+    ```
+    or halt temporarily just for one cell when `%autodip on` is in effect:
+    ```
+    #dip_locally
+    <Run this cell local namespace, regardless %autodip being 'on' or 'off' >
     ```
 
 ## Known Limitations, Issues to investigate, Features to add

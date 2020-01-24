@@ -6,51 +6,59 @@ The FastAI course-V3 is the first use case.
 
 `pip install git+https://github.com/philtrade/ipyparallel-torchddp.git`
 
+## Useful Concepts:
+
+*Add links*
+* Line and cell magics in iPython/Jupyter notebook
+* Using Distributed Data Parallel training mode in PyTorch and Fastai
+
 ## Usage
 
-### Load the extension:
-```
-%load_ext ddipp
-```
 
+### Load the extension:
+    ```
+    %load_ext ddipp
+    ```
 ### Commands/Magics in iPython/Jupyter Notebook
 
-* Initialize a Distributed Data Parallel processing group with a list of GPUs, and prepare to run FastAi v1's library in the notebook, on this DDP group:
+* Initialize/Stopping/Restarting a Distributed Data Parallel (DDP) group:
 
-```
-%makedip -g all -a fastai_v1 --verbose True
-```
-* Passing variables between notebook iPython and the DDP procecesses
+    ```
+    %makedip -g all -a fastai_v1 --verbose True
+    ```
 
-```
-%dip --push var1 var2 var3..... varN
-```
+* Pushing variables from the notebook iPython namespace, to the DDP group
+
+    ```
+    %dip --push var1 var2 var3..... varN
+    ```
+
 * Execute a cell in the DDP group (remote):
-```
-%%dip # Add this to the first line of a notebook cell
-<code>
-```
+    ```
+    %%dip # Add this to the first line of a notebook cell
+    <code>
+    ```
 
 * Execute a cell both in the notebook namespace (local) and in the DDP group (remote):
-```
-%%dip --to both
-from fastai.vision import *
-import os
-```
+    ```
+    %%dip --to both
+    from fastai.vision import *
+    import os
+    ```
 
 * Turn on/off automatic execution in the DDP group:
-```
-%autodip [on or off] [optional flags passed to %%dip]
+    ```
+    %autodip [on or off] [optional flags passed to %%dip]
 
-< all subsequent cells are executed in the remote DDP group only, as if every cell starts with %%dip on the first line>
-```
+    < all subsequent cells are executed in the remote DDP group only, as if every cell starts with %%dip on the first line>
+    ```
 
 * In the middle when `%autodip` is on, want to execute a cell locally in the notebook namespace:
 
-```
-%%dip --to local
-<cell to be run only in local namespace, regardless %autodip is on or off>
-```
+    ```
+    %%dip --to local
+    <cell to be run only in local namespace, regardless %autodip is on or off>
+    ```
 
 ## Known Limitations, Issues to investigate, Features to add
 

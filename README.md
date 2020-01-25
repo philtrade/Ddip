@@ -1,6 +1,6 @@
 # On Using Distributed Data Parallel in FastAI Jupyter Notebooks
 
-`ddipp` is a little iPython extension of line and cell magics.  It uses `ipyparallel` to manage the process pool of DDP inside iPython/Jupyter notebook environment, and patches up `fastai v1` at runtime, so that the notebooks in FastAI's course-v3 can train models using multiple GPUs in DDP mode (which it can't as of late 2019)
+`ddipp` is a little iPython extension of line and cell magics.  It uses `ipyparallel` to manage the process pool of DDP inside iPython/Jupyter notebook environment, and patches up `fastai v1` at runtime, so that the notebooks in FastAI's course-v3 can train models using multiple GPUs, interactively (which it can't as of late 2019).
 
 
 Platform tested: single host with multiple GPU, Ubuntu linux + PyTorch + Python 3, fastai v1 and fastai course-v3.

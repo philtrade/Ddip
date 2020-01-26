@@ -1,11 +1,8 @@
-# `ddipp`'s known limitations, issues, bugs, and things to add
-
-
 ## Limitations, Issues, and Bugs:
 
 * **Works in Single Host with Multiple GPU only**
 
-    `ddipp` was developed/tested on a single host with multiple GPUs, and isn't likely to work in "*multiple nodes x multiple GPU*" yet.  Would be an interesting project though. 
+    `ddipp` was developed/tested on a single host with multiple GPUs, and may not work in "*multiple nodes x multiple GPU*" yet.
 
 * **Process group must starts with GPU 0, and in consecutive, ascending order**
 
@@ -13,18 +10,20 @@
     `3,2,1,0`, or `1,2,3`, or `0,3` etc...
 
 * **Problems with FastAI notebooks:**
+    * Progress Bar: Only the ascii/ConsoleProgress, not the HTML version, is supported at present.
     * lesson6-pets-more the cnn_learner doesn't show training speed-up with multiple GPUs
 
-    * lesson4-imdb, a langauge modelling task, doesn't seem to train correctly when in multiple-GPU DDP mode.
+    * lesson3-imdb, a langauge modelling task, doesn't seem to train correctly when in multiple-GPU DDP mode.
 
-        Something isn't done right when loading a previously trained model/text embedding to train another language model.  Not seeing improvement in accuracy.
+        When loaded with a previously trained encoder `fine_tuned_enc`, the next `learn.fit_one_cycle(1, 2e-2, moms=(0.8,0.7))` accuracy is stuck at 49.xx%, not the supposed 92%+.
 
 ## Things to Add:
 * **Unit tests, and perhaps CI**
 
     So far FastAi's lesson notebooks are used as integration test.  `ddipp` needs and will benefit from some unit tests.
+* **Support for DDP in multiple nodes x multiple GPUs configuration**
 
-* **FastAi V2** #feature
+* **FastAi V2**
     
     `ddipp` was developed using FastAi v1's lesson notebooks, and `fastai v2` is being rolled out. `ddipp` may need to catch up.
 

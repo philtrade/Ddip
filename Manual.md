@@ -1,10 +1,11 @@
-A user guide to `ddipp`
+# User Guide to Double Dip `ddipp`
 
 ## Introduction
 
-`ddipp` is a collection of iPython line and cell magics, only useful within an interactive iPython or Jupyter notebook session.  It uses `ipyparallel` to manage PyTorch's Distributed Data Parallel (DDP) process group as a cluster.  Each process in a DDP group is assigned to manage a particular GPU device.  In this aspect, `ddipp` is like a traffic controller, to direct the execution of cells to the DDP group when asked to, and it will route back the outputs.
+`ddipp` is a collection of line and cell magics for iPython and Jupyter notebook.  It uses `ipyparallel` to manage PyTorch's Distributed Data Parallel (DDP) process group as a cluster.  In this aspect, `ddipp` is like a traffic controller, it directs the execution of cells between the local process (the interactive notebook), and the remote DDP process group, and streams/display the outputs.
 
-`ddipp` treats `fastai` as a client application that uses the PyTorch DDP.  User can specify what application to prepare for, when creating a DDP group (using `%makedip`).  `fastai_v1` is the default application.  In this context, `ddipp` dynamically patches up `fastai` to achieve correct execution, while maintaining the interactive user experience of the typical `fastai` Jupyter notebook workflow.
+`ddipp` treats `fastai` as a client application that uses the PyTorch DDP (currently  `fastai_v1` is the default application).  `ddipp` is designed to minimize changes to  existing `fastai` Jupyter notebooks, and without requiring any change to the fastai codebase itself.
+
 
 ## Using `ddipp`
 
@@ -24,11 +25,12 @@ A user guide to `ddipp`
     %makedip -g all -a fastai_v1 --verbose True
 
     ```
+* Do some data loading, massage, exploration, augmentation etc..
 
-* Pushing variables from the notebook "local" namespace, to the DDP group namespace:
+* Ready to create training data that need to be on accessible to each DDP process, let us push variables from the notebook "local" namespace, to the DDP group namespace:
 
     ```
-    %dip --push var1 var2 var3..... varN
+    %dipush var1 var2 var3..... varN
     ```
 
 * Execute a notebook cell in parallel across the DDP processes (each has its own designated GPU):
@@ -39,7 +41,7 @@ A user guide to `ddipp`
 
 * Execute a cell in **both** the notebook and across DDP processes:
     ```
-    %%dip --to both
+    %%dip everywhere
 
     # Execute this cell first in local notebook, then in parallel across DDP processes
     
@@ -49,22 +51,20 @@ A user guide to `ddipp`
 
 * Turn on/off automatic parallel/DDP execution:
     ```
-    %autodip on [optional flags passed to %%dip]
+    %autodip {on, off} [optional flags passed to %%dip]
     ```
     ```
-    < %%dip [optoinal flags] is prepended to the cells implicitly, and will be executed in the remote DDP group >
+    [If on, subsequent cells will run in parallel among the DDP processes]
+    [If off, subsequent cells will run in the local notebook namespace]
 
-    [Subsequent cells will run in parallel, across the DDP processes]
     ```
 
-* To halt the automatic parallel/DDP exeuction:
-    ```
-    %autodip off  # Subsequent cells run in local notebook namespace again.  
-    ```
-    or halt temporarily just for one cell when `%autodip on` is in effect:
+* To run one cell locally, regardless %autodip is on or off, insert any of below as the first line of the cell:
     ```
     #dip_locally
-    <Run this cell local namespace, regardless %autodip being 'on' or 'off' >
+    ```
+    ```
+    %%dip locally [optional flags..]
     ```
 
 

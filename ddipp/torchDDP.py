@@ -33,7 +33,8 @@ def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
 
 def exit_group_single():
     '''Exit the current process from the PyTorch distributed process group.'''
-    for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]: os.environ.pop(i)
+    for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]:
+        os.environ.pop(i)
     torch.distributed.destroy_process_group()
     torch.cuda.empty_cache()
 
@@ -151,7 +152,7 @@ class Ddp():
 
     def app_init(self, appname:str):
         '''Configure additional application besides PyTorch op each ipyparallel engine process.
-        The application module must define `initializer(), finalizer(), and set_verbose()` functions.'''
+        The application module must define `initializer(), finalizer(), set_verbose(), imports`.'''
         app = importlib.import_module(f".{appname}", package=__package__)
         if app is None: raise NameError(f"Unknown app '{appname}' for Torch DDP. Have you installed {appname}.py?")
         
@@ -234,20 +235,17 @@ class Ddp():
             Config.Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
             self.cluster.interrupt_engines(self.ddp_group)
 
-        try:
-            # for s in [ar.stdout, ar.stderr, ar.outputs, ar.execute_result, ]:
-            ar.engine_id = [ ar.engine_id[i] for i in filter(lambda x: x < len(ar.engine_id), see) ]
-            ar.stdout = [ ar.stdout[i] for i in filter(lambda x: x < len(ar.stdout), see) ]
-            ar.stderr = [ ar.stderr[i] for i in filter(lambda x: x < len(ar.stderr), see) ]
-            ar.outputs = [ ar.outputs[i] for i in filter(lambda x: x < len(ar.outputs), see) ]
-            if ar._result: ar._result = [ ar._result[i] for i in filter(lambda x: x < len(ar._result), see) ]
-            if ar.execute_result: ar.execute_result = [ ar.execute_result[i] for i in filter(lambda x: x < len(ar.execute_result), see) ]
+        # Filter output by the "see" list of GPU ids
+        for o in ['engine_id', 'stdout', "stderr", "outputs", "_result", "execute_result", ]:
+            v = getattr(ar, o, None) 
+            if v: setattr(ar, o, [v[i] for i in filter(lambda x: x < len(v), see)])
 
+        try: # Try to catch and print otherwise lost outputs
             ar.display_outputs(groupby='order')
         except CompositeError as e:
-            for i,o in enumerate(ar.outputs):
+            for i,o in zip(ar.engine_id, ar.outputs):
                 if len(o) > 0: ar._republish_displaypub(o[0],i)
-            print_verbose(f"Remote exceptions: {e}", file=sys.stderr)
+            e.raise_exception()
 
         if Config.AutoGC and (self.meminfo() != baseline_mem): self._apply_async(freemem)
         

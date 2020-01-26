@@ -9,19 +9,33 @@ from fastai.callbacks.lr_finder import LRFinder
 import fastprogress
 from fastprogress.fastprogress import master_bar, progress_bar, force_console_behavior, IN_NOTEBOOK
 
-'''
-FastAI specific setup
-'''
-FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,
-    Verbose = False, old_cbs = None, lr_find_rank = 0, pid = os.getpid())
+FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,)
+Config = SimpleNamespace(Verbose = False, lr_find_rank = 0, fake_recorder = None, pid = os.getpid())
 
-def print_verbose(*args, **kwargs): FastaiSaver.Verbose and print(f"Proc [{FastaiSaver.pid}]", *args, **kwargs, flush=True)
+imports = [ 'import fastai, fastai.torch_core, torch, fastprogress', 'from fastai.distributed import *',
+    f"from {__name__} import initializer, finalizer, set_verbose, lr_find_bypass",]
 
-def set_verbose(verbose:bool=True): FastaiSaver.Verbose = verbose
+def set_verbose(verbose:bool=True): Config.Verbose = verbose
+def print_verbose(*args, **kwargs): Config.Verbose and print(f"Proc [{Config.pid}]", *args, **kwargs, flush=True)
+
+class FakeRecorder():
+    def plot(self, *args, **kwargs): pass
+    def plot_losses(self, *args, **kwargs): pass
+    def plot_lr(self, *args, **kwargs): pass
+    def plot_metrics(self, *args, **kwargs): pass
+
+def learner_getattr_override(learner:Learner, name:str):
+    '''lr_find() calls fit(), which instantiates learner.recorder.
+    but lr_find() only makes sense to run in non-DDP fashion, hence only on only one process.
+    All the other processes which don't get to run fit() at the meantime,
+    do not have 'recorder' object instantiated.  We override Learner.__getattr__ when
+    catch learners which don't have 'recorder' yet.
+    '''
+    if name == 'recorder': return Config.fake_recorder
+    else: raise AttributeError
 
 def _post_init_DDP(learner):
-    '''Make a freshly created Learner object to run in DDP mode when training.
-    '''
+    '''Make a freshly created Learner object to run in DDP mode when training.'''
     assert FastaiSaver.post_init, " Original fastai.Learner.__post_init__ not saved yet!"
     FastaiSaver.post_init(learner)
     learner.to_distributed(torch.cuda.current_device())
@@ -30,8 +44,10 @@ def ddpify_Learner_class():
     if FastaiSaver.post_init is None:  # Intercept Learner.__post_init__() to append our own handler
         FastaiSaver.post_init = Learner.__post_init__
         FastaiSaver.lr_find = Learner.lr_find
+        Config.fake_recorder = FakeRecorder()
         Learner.__post_init__ = _post_init_DDP
         Learner.lr_find = lr_find_bypass
+        Learner.__getattr__ = learner_getattr_override
 
 def restore_Learner_class():
     if FastaiSaver.post_init is not None:
@@ -45,31 +61,26 @@ def to_non_distributed(learn:Learner):
     for t in dist_cb:
         for cb in learn.callbacks:
             if isinstance(cb, t): 
-                print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Removing callback {type(cb)} from learner.")
+                print_verbose(f"Rank [{Config.lr_find_rank}] Removing callback {type(cb)} from learner.")
                 learn.callbacks.remove(cb)
 
 def lr_find_bypass(learn:Learner, *args, **kwargs):
-    ''' Execute the real lr_find() only on rank-0 process, as this operation doesn't
-    make sense in DDP mode yet.  Temporarily exit the distributed trainer mode before that,
-    and restore afterwards.
-    '''
+    ''' Temporarily exit the distributed trainer mode, call the real lr_find(), restore afterwards.'''
     assert FastaiSaver.lr_find, "Original lr_find() not saved yet.  Was _distrib_Learner(True) called?"
-
-
     my_rank = rank_distrib()
-    if my_rank == FastaiSaver.lr_find_rank:
-        to_non_distributed(learn)  # Temporarily remove DistributedTrainer and DistributedRecorder from the callbacks
-        ws = os.environ.get('WORLD_SIZE', 0) # Shrink WORLD_SIZE to 1 such that the proc won't create a distributed barrier
-        if ws: os.environ['WORLD_SIZE'] = str(1) # see torch_core.distrib_barrier() and Learner.load().
-        print_verbose(f"Rank [{FastaiSaver.lr_find_rank}] Running lr_find() in non DDP mode")
+    if my_rank == Config.lr_find_rank:
+        to_non_distributed(learn)  # Uninstall DistributedTrainer and DistributedRecorder
+        ws = os.environ.get('WORLD_SIZE', 0) # Prevent distributed barrier from kicking in
+        if ws: os.environ['WORLD_SIZE'] = str(1)
+
+        print_verbose(f"Rank [{Config.lr_find_rank}] Running lr_find() in non DDP mode")
         FastaiSaver.lr_find(learn, *args, **kwargs)
-        if ws: os.environ['WORLD_SIZE'] = ws # restore 
+
+        if ws: os.environ['WORLD_SIZE'] = ws # restore and reinstall
         learn.to_distributed(torch.cuda.current_device())
     else:
-        print_verbose(f"Rank [{my_rank}] cannot run lr_find() in DDP mode (only Rank [{FastaiSaver.lr_find_rank}] can).")
+        print_verbose(f"Rank [{my_rank}] cannot run lr_find() in DDP mode (only Rank [{Config.lr_find_rank}] can).")
         # LRFinder(learn).on_train_end()
-
-
 
 def silent_console(silent:bool=True):
     "Turn off console progress bar output."
@@ -79,13 +90,10 @@ def silent_console(silent:bool=True):
         dataclasses.dataclass, text, text.data, core]
     for c in cls_list: c.master_bar, c.progress_bar = mbar,pbar
 
-imports = '\n'.join([ 'import fastai, fastai.torch_core, torch, fastprogress',
-    'from fastai.distributed import *', f"from {__name__} import initializer, finalizer, set_verbose, lr_find_bypass",])
-
 def initializer():
     '''A few fastai_v1-specific housekeeping:
-    0. Fix defaults.device out of sync bug in fastai.torch_core.py
-    1. Limit progress bar standard output to only RANK 0 process.
+    1. Fix defaults.device out of sync bug in fastai.torch_core.py
+    2. Limit progress bar standard output to only RANK 0 process.
     3. Implicitly make all new Learner object DDP-ready upon instantiation by intercepting Learner.__post_init__().
        (Defer the detour to to_distributed() till Learner.fit() time would break lr_find(), see lr_find_bypass() above. )
     '''

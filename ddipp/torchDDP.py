@@ -159,7 +159,7 @@ class Ddp():
 
         if self._app is None:
             Config.Verbose and print(f"Importing on cluster: {app.imports}", flush=True)
-            self.cluster.px_view.execute(app.imports, block=True)
+            self.cluster.px_view.execute('\n'.join(app.imports), block=True)
             self.cluster.px_view.apply_sync(app.set_verbose, Config.Verbose)
             r = self.cluster.px_view.apply_sync(app.initializer)
             Config.Verbose and print(f"{appname}:", *r, sep='\n')

@@ -132,7 +132,7 @@ class DdpMagic(Magics):
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('-S', '--see', dest='see', type=str, nargs='+', help="Specify which processes' output to show, by GPU ids. List of integers or 'all'. Default to 0.")
-    @argument('where', nargs=None, type=str, choices=["remote", "local", "everywhere"], default="remote", help="Where to run the cell.")
+    @argument('where', nargs='?', type=str, choices=["remote", "local", "everywhere"], default="remote", help="Where to run the cell, default is remote.")
     @cell_magic
     def dip(self, line, cell=None):
         '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''

@@ -1,7 +1,6 @@
-# On Using Distributed Data Parallel in FastAI Jupyter Notebooks
+# On Interactive, Distributed Training in FastAI Jupyter Notebooks
 
-`ddipp` ("D dip") is a little iPython extension of line and cell magics.  It uses `ipyparallel` to manage the process pool of DDP inside iPython/Jupyter notebook environment, and patches up `fastai v1` at runtime, so that the notebooks in FastAI's course-v3 can train models using multiple GPUs, interactively (which it can't as of late 2019).
-
+`ddipp` ("D dip") is a little iPython extension of line and cell magics to bring together `fastai` lesson notebooks [[1]](#course_v3) and PyTorch's Distributed Data Parallel [[2]](#pytorchddp).  It uses `ipyparallel` [[3]](#ipp) to manage the DDP process group. 
 
 Platform tested: single host with multiple GPU, Ubuntu linux + PyTorch + Python 3, fastai v1 and fastai course-v3.
 
@@ -33,10 +32,16 @@ Now the Jupyter notebook is ready to dance between the local iPython and the DDP
 
 ## References:
 
-- [FastAI Course v3](https://course.fast.ai/)
-- [About PyTorch's DDP](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html), and [Launching fastai to use DDP](https://docs.fast.ai/distributed.html)
-- [A gentle intro to using ipyparallel](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html) and [the official ipyparallel documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html)
+1.<a name="course_v3"></a> [FastAI Course v3](https://course.fast.ai/)
+
+2.<a name="pytorchddp"></a> [About PyTorch's DDP](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html), and [Launching fastai to use DDP](https://docs.fast.ai/distributed.html)
 
 
+3.<a name="ipp"></a> On Parallel execution in iPython using `ipyparallel`:
+  - ["Using ipyparallel"](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html), *by Duke University's Computational Statistics in Python course*
+  - [The official ipyparallel documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html)
+  - [Interactive Distributed Deep Learning with Jupyter Notebooks](https://sc18.supercomputing.org/proceedings/tech_poster/poster_files/post206s2-file3.pdf), *Lawrence Berkeley National Laboratory/Cray Inc.*
+  - [Challenges in Providing an Interactive Service with Jupyter on
+Large-Scale HPC Systems](https://cug.org/proceedings/cug2019_proceedings/includes/files/pres104s1.pdf), *Swiss National Supercomputing Centre*
 
-     
+

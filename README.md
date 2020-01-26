@@ -37,9 +37,8 @@ Now the Jupyter notebook is ready to dance between the local iPython and the DDP
 2.<a name="pytorchddp"></a> [About PyTorch's DDP](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html), and [Launching fastai to use DDP](https://docs.fast.ai/distributed.html)
 
 
-3.<a name="ipp"></a> On Parallel execution in iPython using `ipyparallel`:
+3.<a name="ipp"></a> Besides `ipyparallel` [official documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html), tutorials and papers from the high performance computing/HPC community further motivated `ddipp`:
   - ["Using ipyparallel"](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html), *by Duke University's Computational Statistics in Python course*
-  - [The official ipyparallel documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html)
   - [Interactive Distributed Deep Learning with Jupyter Notebooks](https://sc18.supercomputing.org/proceedings/tech_poster/poster_files/post206s2-file3.pdf), *Lawrence Berkeley National Laboratory/Cray Inc.*
   - [Challenges in Providing an Interactive Service with Jupyter on
 Large-Scale HPC Systems](https://cug.org/proceedings/cug2019_proceedings/includes/files/pres104s1.pdf), *Swiss National Supercomputing Centre*

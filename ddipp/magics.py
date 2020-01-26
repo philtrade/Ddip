@@ -90,9 +90,7 @@ class DdpMagic(Magics):
 
         if args.verbose: Config.Verbose = args.verbose == "True"
         if args.info: print(self.info())
-
         if args.kill or args.restart: self._stopdip()
-
         if args.kill: return
 
         if not self.ddp: self.init_ddp()
@@ -111,11 +109,31 @@ class DdpMagic(Magics):
             self.shell.run_line_magic("pxconfig", "--verbose" if Config.Verbose else "--no-verbose")        
 
     @magic_arguments()
+    @argument('push_vars', type=str, nargs='+', help="Push a list of variables from local ipython/notebook namespace to the DDP group processes.")
+    @line_magic
+    def dipush(self, line=''):
+        args = parse_argstring(self.dipush, line)
+        if args.push_vars:
+            push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars }
+            Config.Verbose and print(f"Pushing parameters to DDP namespace: {args.push_vars}", flush=True)
+            self.ddp.push(push_dict)
+
+    @magic_arguments()
+    @argument('-g', dest='gpu', type=int, default=0, help="GPU id to fetch the variables from.  Default to GPU 0.")
+    @argument('pull_vars', type=str, nargs='+', help="Pull a list of variables from the DDP group processes to local ipython/notebook namespace.")
+    @line_magic
+    def dipull(self, line=''):
+        args = parse_argstring(self.dipull, line)
+        Config.Verbose and print(f"Pulling from DDP namespace: {args.pull_vars}", flush=True)
+        remote_dict = self.ddp.pull(args.pull_vars)
+        print(f"remote_dict: {remote_dict}", flush=True)
+        self.shell.user_ns.update(remote_dict)
+
+    @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    @argument('-t', '--to', dest='where', nargs=None, type=str, choices=["gpu", "local", "both"], default="gpu", help="Where to run the cell.")
-    @argument('-p', '--push', dest='push_vars', type=str, nargs='+', help="Push a list of variables from local ipython to the DDP group processes.  When invoked as a cell magic %%, it is done before execution of the cell.")
     @argument('-S', '--see', dest='see', type=str, nargs='+', help="Specify which processes' output to show, by GPU ids. List of integers or 'all'. Default to 0.")
-    @line_cell_magic
+    @argument('where', nargs=None, type=str, choices=["remote", "local", "everywhere"], default="remote", help="Where to run the cell.")
+    @cell_magic
     def dip(self, line, cell=None):
         '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''
         if self.shell is None: raise RuntimeError("%%dip: Not in an ipython Interactive shell!")
@@ -123,28 +141,22 @@ class DdpMagic(Magics):
 
         args = parse_argstring(self.dip, line)
 
-        # '--push var1 var2 ...': Export variables from local namespace to DDP group.
-        if args.push_vars:
-            push_dict = { varname: self.shell.user_ns[f"{varname}"] for varname in args.push_vars }
-            Config.Verbose and print(f"Pushing parameters to engines namespace: {args.push_vars}", flush=True)
-            self.ddp.push(push_dict)
-
         if cell is None: return
 
         # '--to [gpu|local|both]': Where to run the cell
         gpus = self.ddp.ddp_group
-        run_on = { 'gpu': ' ', 'both' : 'local ipython and ', 'local' : 'local ipython ONLY, SKIPPING '}
-        where = f"{run_on.get(args.where,'')}" + f"DDP group (GPUs: {gpus})"
-        if Config.Verbose: print(f"%%dip {line}: Running cell on {where}", flush=True)
+        where = { args.where } if args.where != "everywhere" else { "local", "remote" }
 
-        if (args.where == 'local') or (args.where == 'both'):
+        if "local" in where:
             # To run a cell inside "%%dip" locally, insert a "stop sign" in the first line,
             # it'll then bypass any %autodip cell transformer, and won't end up here again.
+            Config.Verbose and print(f"%%dip {line}: Running cell in local namespace.", flush=True)
             self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
-            if args.where == 'local': return
-
-        see_outputs = self.gpu_str2list(args.see) if args.see else None
-        self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)
+        
+        if "remote" in where:
+            see_outputs = self.gpu_str2list(args.see) if args.see else None
+            Config.Verbose and print(f"%%dip {line}: Running cell in remote DDP namespace (GPUs: {gpus}).", flush=True)
+            self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)
         
     @line_magic
     def dipper(self, line:str=''):

@@ -11,19 +11,20 @@ Platform tested: single host with multiple GPU, Ubuntu linux + PyTorch + Python 
 
 ## Quick Usage Examples in Jupyter Notebook:
 
-1. Load the extension: `%load_ext ddipp`
+1. `%load_ext ddipp`
+2. `%makedip -g all -a fastai_v1` # Initialize GPUs, fastai, and PyTorch DDP:  
 
-2. Initialize GPUs, fastai, and DDP:  `%makedip -g all -a fastai_v1 --verbose True`
+Now the Jupyter notebook is ready to dance between the local iPython and the DDP processes.
 
-Now the Jupyter notebook is ready to dance between the local iPython and the DDP processes:
+*On Object Movement*
+* `%dipush a b c` to push local variables `a`,`b`, `c` into the DDP processes.
+* `%dipull x y` to pull `x` and `y` from one DDP process into local notebook.
 
-* Line magic `%dip --push a b c` to push local notebook variables `a`,`b`, and `c` into the DDP processes.
+*On Code Execution*
+* `%%dip` to execute a notebook cell on the DDP processes in parallel.
+* `%%dip {local | remote | everywhere}` to execute cell in **either local, remote DDP processes, or both.**
+* `%autodip on [options and arguments] ` to automatically run subsequent cells on the DDP processes, without the need to insert `%%dip options and arguments` every time.
 
-* Cell magic `%%dip` to execute a notebook cell in parallel on the DDP processes.  Use option `--to both` to run the cell in both locally *and* on DDP.
-
-* Line magic `%autodip on` to implicitly prepend `%%dip` to all subsequent cells, thus automatically run them all on the DDP processes. 
-
-* Insert `#dip_locallly` as the cell's first line, to enforce local execution, regardless `%autodip` is on or off.
 
 ## Documentation:
 * [`ddipp` Manual](Manual.md)

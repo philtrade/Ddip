@@ -1,4 +1,4 @@
-# Interactive Distributed-Data-Parallel in FastAI Jupyter Notebooks
+# Interactive PyTorch DDP Training in FastAI Jupyter Notebooks
 
 `ddipp` ("D dip") is a little iPython extension of line and cell magics to bring together `fastai` lesson notebooks [[1]](#course_v3) and PyTorch's Distributed Data Parallel [[2]](#pytorchddp).  It uses `ipyparallel` [[3]](#ipp) to manage the DDP process group. 
 

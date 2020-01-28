@@ -4,30 +4,30 @@
 
 Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTorch + Python 3, fastai v1 and fastai course-v3.
 
+## Features:
+
+`ddipp` was designed to make experiments with multiple GPU/Distributed Data Parallel learning a little bit easier in Fastai notebooks.  It provides a few hopefully useful features towards that end:
+
+1. Parallel execution in a multiprocess PyTorch DDP group, separate from the local notebook namespace
+2. Automatic garbage collection in after parallel execution of a cell
+3. Make `fastai`'s learning rate finder DDP friendly in typical notebook workflow.
+4. Stream outputs of parallel execution to notebook console so that users can see the training progress.
+
 
 ## Installation:
 
 `pip install git+https://github.com/philtrade/ipyparallel-torchddp.git`
 
-## Quick Usage Examples in Jupyter Notebook:
+## Overview and Examples:
+### `ddipp` line and cell magics
+* `%load_ext ddipp`
+* `%makedip -g all -a fastai_v1 --verbose True`
+* `%%dip {remote | local | everywhere} `
+* `%dipush bs src .....`
+* `%autodip {on | off}`
 
-1. `%load_ext ddipp`
-2. `%makedip -g all -a fastai_v1` # Initialize GPUs, fastai, and PyTorch DDP:  
-
-Now the Jupyter notebook is ready to dance between the local iPython and the DDP processes.
-
-*On Object Movement*
-* `%dipush a b c` to push local variables `a`,`b`, `c` into the DDP processes.
-* `%dipull x y` to pull `x` and `y` from one DDP process into local notebook.
-
-*On Code Execution*
-* `%%dip` to execute a notebook cell on the DDP processes in parallel.
-* `%%dip {remote | local | everywhere}` to execute cell in **either remote DDP processes (default), local, or both.**
-* `%autodip on [-a "options and arguments"] ` to automatically run subsequent cells on the DDP processes, without the need to insert `%%dip options and arguments` every time.
-
-* [Using `ddipp` with `fastai_v1`](notebooks/ddipp_usage_fastai.ipynb)
-* [Example Notebooks](notebooks/)
-* [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
+### [A `fastai` notebook Using `ddipp` to train in DDP](notebooks/ddipp_usage_fastai.ipynb), and [more notebooks](notebooks/)
+## [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
 
 ## References:
 

@@ -23,6 +23,10 @@
     So far FastAi's lesson notebooks are used as integration test.  `ddipp` needs and will benefit from some unit tests.
 * **Support for DDP in multiple nodes x multiple GPUs configuration**
 
+* **Reimplement learning rate finder bypass and automatic garbage collection using fastai's callback mechanism**
+    
+    Current impementation monkey-patches up the code at runtime.  Using `fastai`'s callback maybe a much cleaner solution.  E.g. only do garbage collection at the end of a fit(), instead of only at the end of a notebook cell execution.
+
 * **FastAi V2**
     
     `ddipp` was developed using FastAi v1's lesson notebooks, and `fastai v2` is being rolled out. `ddipp` may need to catch up.

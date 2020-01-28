@@ -6,12 +6,12 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Features:
 
-`ddipp` was designed to make experiments with multiple GPU/Distributed Data Parallel training a little bit easier in Fastai notebooks.  It provides a few hopefully useful features towards that end:
+`ddipp` was designed to make experiments with multiple GPU/Distributed Data Parallel training a little bit easier in Fastai notebooks. Towards that end:
 
 1. Parallel execution in a multiprocess PyTorch DDP group, separate from the local notebook namespace
-2. Automatic garbage collection in after parallel execution of a cell
-3. Make `fastai`'s learning rate finder DDP friendly in typical notebook workflow.
-4. Stream outputs of parallel execution to notebook console so that users can see the training progress.
+2. Automatic garbage collection and freeing GPU cache memory after parallel execution of a cell
+3. Minimize the code changes required Fastai notebooks -- often only 3 - 5 new lines of code.
+4. Stream any parallel execution output in real time to notebook console.
 
 
 ## Installation:
@@ -20,13 +20,15 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Overview and Examples:
 ### `ddipp` line and cell magics
-* `%load_ext ddipp`
-* `%makedip -g all -a fastai_v1 --verbose True`
-* `%%dip {remote | local | everywhere} `
-* `%dipush bs src .....`
-* `%autodip {on | off}`
+* `%load_ext ddipp`,  to load the extension
+* `%makedip -g all -a fastai_v1`, to initialize `fastai` to use DDP in notebook
+* `%%dip {remote | local | everywhere} `, to designate where a cell is executed
+* `%dipush bs src .....`, to push some variables from notebook to the DDP processes
+* `%autodip {on | off}`, to switch on/off automatic remote-execution of subsequent cells
 
-### [A `fastai` notebook Using `ddipp` to train in DDP](notebooks/ddipp_usage_fastai.ipynb), and [more notebooks](notebooks/)
+### Examples:
+* [The `fastai` lesson3-camvid notebook using `ddipp` to train in DDP](notebooks/ddipp_usage_fastai.ipynb),
+* [More notebooks](notebooks/)
 ## [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
 
 ## References:

@@ -25,8 +25,8 @@ Now the Jupyter notebook is ready to dance between the local iPython and the DDP
 * `%%dip {remote | local | everywhere}` to execute cell in **either remote DDP processes (default), local, or both.**
 * `%autodip on [-a "options and arguments"] ` to automatically run subsequent cells on the DDP processes, without the need to insert `%%dip options and arguments` every time.
 
-* [Using `ddipp` with `fastai_v1`](ddipp_usage_fastai.ipynb)
-* [Example Notebooks](nbs/)
+* [Using `ddipp` with `fastai_v1`](notebooks/ddipp_usage_fastai.ipynb)
+* [Example Notebooks](notebooks/)
 * [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
 
 ## References:

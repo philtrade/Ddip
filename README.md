@@ -22,12 +22,10 @@ Now the Jupyter notebook is ready to dance between the local iPython and the DDP
 
 *On Code Execution*
 * `%%dip` to execute a notebook cell on the DDP processes in parallel.
-* `%%dip {local | remote | everywhere}` to execute cell in **either local, remote DDP processes, or both.**
-* `%autodip on [options and arguments] ` to automatically run subsequent cells on the DDP processes, without the need to insert `%%dip options and arguments` every time.
+* `%%dip {remote | local | everywhere}` to execute cell in **either remote DDP processes (default), local, or both.**
+* `%autodip on [-a "options and arguments"] ` to automatically run subsequent cells on the DDP processes, without the need to insert `%%dip options and arguments` every time.
 
-
-## Documentation:
-* [`ddipp` Manual](Manual.md)
+* [Using `ddipp` with `fastai_v1`](ddipp_usage_fastai.ipynb)
 * [Example Notebooks](nbs/)
 * [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
 
@@ -44,7 +42,7 @@ Now the Jupyter notebook is ready to dance between the local iPython and the DDP
 3. <a name="ipp"></a>On `ipyparallel`, a few resources and inspirations to `ddipp`:
 * [The official documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html),
 * [An intro to ipyparallel](http://activisiongamescience.github.io/2016/04/19/IPython-Parallel-Introduction/), *Activevision Game Science*
-* ["Using ipyparallel"](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html), *Duke University, "Computational Statistics in Python"*
+* [Using ipyparallel](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html), *Duke University, "Computational Statistics in Python"*
 * [Interactive Distributed Deep Learning with Jupyter Notebooks](https://sc18.supercomputing.org/proceedings/tech_poster/poster_files/post206s2-file3.pdf), *Lawrence Berkeley National Laboratory/Cray Inc.*
 
 

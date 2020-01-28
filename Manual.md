@@ -1,13 +1,6 @@
 # User Guide to Double Dip `ddipp`
 
-## Introduction
 
-`ddipp` is a collection of line and cell magics for iPython and Jupyter notebook.  It uses `ipyparallel` to manage PyTorch's Distributed Data Parallel (DDP) process group as a cluster.  In this aspect, `ddipp` is like a traffic controller, it directs the execution of cells between the local process (the interactive notebook), and the remote DDP process group, and streams/display the outputs.
-
-`ddipp` treats `fastai` as a client application that uses the PyTorch DDP (currently  `fastai_v1` is the default application).  `ddipp` is designed to minimize changes to  existing `fastai` Jupyter notebooks, and without requiring any change to the fastai codebase itself.
-
-
-## Using `ddipp`
 
 ### Installation
 1. To load the extension, simply run this in iPython/Jupyter:

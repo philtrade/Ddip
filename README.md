@@ -6,7 +6,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Features:
 
-`ddipp` was designed to make experiments with multiple GPU/Distributed Data Parallel learning a little bit easier in Fastai notebooks.  It provides a few hopefully useful features towards that end:
+`ddipp` was designed to make experiments with multiple GPU/Distributed Data Parallel training a little bit easier in Fastai notebooks.  It provides a few hopefully useful features towards that end:
 
 1. Parallel execution in a multiprocess PyTorch DDP group, separate from the local notebook namespace
 2. Automatic garbage collection in after parallel execution of a cell

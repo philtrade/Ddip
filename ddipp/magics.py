@@ -126,7 +126,6 @@ class DdpMagic(Magics):
         args = parse_argstring(self.dipull, line)
         Config.Verbose and print(f"Pulling from DDP namespace: {args.pull_vars}", flush=True)
         remote_dict = self.ddp.pull(args.pull_vars)
-        print(f"remote_dict: {remote_dict}", flush=True)
         self.shell.user_ns.update(remote_dict)
 
     @magic_arguments()

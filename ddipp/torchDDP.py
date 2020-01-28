@@ -228,8 +228,8 @@ class Ddp():
             ar = v.execute(cell, silent=False, block=False) # silent=False to capture transient output
             if not quiet:
                 watcher = self.StreamPrinter(ar.stdout)
-                while not ar.ready(): watcher(ar.stdout, see) # Simulate wait on blocking execution
-                watcher(ar.stdout, see)
+                while not ar.ready(): watcher(ar.stdout, see=see) # Simulate wait on blocking execution
+                watcher(ar.stdout, see=see)
                 ar.stdout = [] # already displayed, flush the streams, so that display_outputs() below won't re-display them again.
         except KeyboardInterrupt:
             Config.Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)

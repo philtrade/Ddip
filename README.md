@@ -1,12 +1,12 @@
 # Interactive PyTorch DDP Training in FastAI Jupyter Notebooks
 
-`ddipp` ("D dip") is a little iPython extension of line and cell magics to bring together `fastai` lesson notebooks [[1]](#course_v3) and PyTorch's Distributed Data Parallel [[2]](#pytorchddp).  It uses `ipyparallel` [[3]](#ipp) to manage the DDP process group. 
+`Ddip` ("Dee dip") --- Distributed Data "interactive" Parallel is a little iPython extension of line and cell magics to bring together `fastai` lesson notebooks [[1]](#course_v3) and PyTorch's Distributed Data Parallel [[2]](#pytorchddp).  It uses `ipyparallel` [[3]](#ipp) to manage the DDP process group. 
 
 Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTorch + Python 3, fastai v1 and fastai course-v3.
 
 ## Features:
 
-`ddipp` was designed to make experiments with multiple GPU/Distributed Data Parallel training a little bit easier in Fastai notebooks. Towards that end:
+`Ddip` was designed to make experiments with multiple GPU/Distributed Data Parallel training a little bit easier in Fastai notebooks. Towards that end:
 
 1. Parallel execution in a multiprocess PyTorch DDP group, separate from the local notebook namespace
 2. Automatic garbage collection and freeing GPU cache memory after parallel execution of a cell
@@ -19,15 +19,15 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 `pip install git+https://github.com/philtrade/ipyparallel-torchddp.git`
 
 ## Overview and Examples:
-### `ddipp` line and cell magics
-* `%load_ext ddipp`,  to load the extension
+### `Ddip` line and cell magics
+* `%load_ext Ddip`,  to load the extension
 * `%makedip -g all -a fastai_v1`, to initialize `fastai` to use DDP in notebook
 * `%%dip {remote | local | everywhere} `, to designate where a cell is executed
 * `%dipush bs src .....`, to push some variables from notebook to the DDP processes
 * `%autodip {on | off}`, to switch on/off automatic remote-execution of subsequent cells
 
 ### Examples:
-* [The `fastai` lesson3-camvid notebook using `ddipp` to train in DDP](notebooks/ddipp_usage_fastai.ipynb),
+* [The `fastai` lesson3-camvid notebook using `Ddip` to train in DDP](notebooks/Ddip_usage_fastai.ipynb),
 * [More notebooks](notebooks/)
 ## [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
 
@@ -41,7 +41,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 * Further readings: [PyTorch Lightning -- Tips for faster training ](https://towardsdatascience.com/9-tips-for-training-lightning-fast-neural-networks-in-pytorch-8e63a502f565), [On the performance of different training parallelism](http://www.telesens.co/2019/04/04/distributed-data-parallel-training-using-pytorch-on-aws/)
 
 
-3. <a name="ipp"></a>On `ipyparallel`, a few resources and inspirations to `ddipp`:
+3. <a name="ipp"></a>On `ipyparallel`, a few resources and inspirations to `Ddip`:
 * [The official documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html),
 * [An intro to ipyparallel](http://activisiongamescience.github.io/2016/04/19/IPython-Parallel-Introduction/), *Activevision Game Science*
 * [Using ipyparallel](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html), *Duke University, "Computational Statistics in Python"*

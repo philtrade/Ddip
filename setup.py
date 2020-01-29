@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="ddipp-philtrade",
+    name="Ddip-philtrade",
     version="0.1",
     author='Phillip K.S. Chu',
     author_email='philtrade@winphil.net',
@@ -14,7 +14,7 @@ setuptools.setup(
     description="Harness Fastai Distributed Data Parallel (DDP) training in iPython/Jupyter notebook",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=['ddipp'],
+    packages=['Ddip'],
     install_requires=['pillow<7','ipyparallel', 'torch', 'fastai'],
     classifiers=[
         "Programming Language :: Python :: 3",

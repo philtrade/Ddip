@@ -54,9 +54,27 @@ class IppCluster():
     @classmethod
     def find_cluster_proc(cls):
         for p in psutil.process_iter():
-            if p.cmdline()[1].endswith("ipcluster") and (IppCluster.cid_flag in p.cmdline()):
-                return p.pid()
+            cmd = p.cmdline()
+            if (len(cmd) > 1) and (cmd[1].endswith("ipcluster")) and ("start" in cmd) and (IppCluster.cid_flag in cmd):
+                return p.pid
         return None
+
+    @classmethod
+    def kill_cluster(cls, pid=None):
+        completed = subprocess.run(["ipcluster", "stop", IppCluster.cid_flag], capture_output=True)
+        if completed.stderr and Config.Verbose:
+            print(f"ipcluster stop returns: {completed.stderr}", file=sys.stderr, flush=True)
+        if pid is None:
+            pid = IppCluster.find_cluster_proc()
+
+        if pid and psutil.pid_exists(pid):
+            try:
+                os.kill(pid, signal.SIGINT)
+                Config.Verbose and print(f"Sending SIGINT to kill ipcluster process {pid}, just a few seconds...", flush=True, file=sys.stderr)
+                time.sleep(3.0)
+            except ProcessLookupError:
+                pass
+            if not psutil.pid_exists(pid): return
 
     def __init__(self, n:int=0, engine_wait:float=15.0):
         popen_cmd = ["ipcluster", "start", IppCluster.cid_flag, "--daemonize"]

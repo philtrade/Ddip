@@ -10,8 +10,8 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 1. Easy switching of code execution between PyTorch's multiprocess DDP group, and that in the local notebook namespace.
 2. Automatic garbage collection and freeing GPU cache memory after parallel execution of a cell, thus reducing the occurence of GPU out of memory error.
-3. Minimize code changes to Fastai `course v3` lesson notebooks to run in DDP, usually 3-5 lines of iPython `%,%%` magics will do. 
-4. Keeping the look-and-feel of Fastai notebook as identical as possible.  E.g. real time progress bar, `Learner.lr_find()` works like the same as in non-distributed mode.
+3. Minimize code changes to Fastai `course v3` lesson notebooks to run in DDP -- usually 3-5 lines of iPython `%,%%` magics will do -- while keeping the look-and-feel as identical as possible.  E.g. real time progress bar, `Learner.lr_find()` works like the same as in non-distributed mode.
+4. Extensible to support future versions of fastai library.  Porting to `fastai v2` is a high priority to-do.
 
 
 ## Installation:

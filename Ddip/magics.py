@@ -9,7 +9,7 @@ from IPython.core.magic_arguments import argument, magic_arguments, parse_argstr
 from ipyparallel import AsyncResult
 from .ddp import Ddp
 
-Config = SimpleNamespace(Verbose = True, DefaultApp = 'fastai_v1')
+Config = SimpleNamespace(Verbose = False, DefaultApp = 'fastai_v1')
 
 @magics_class
 class DdpMagic(Magics):

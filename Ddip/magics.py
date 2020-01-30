@@ -50,7 +50,7 @@ class DdpMagic(Magics):
         return lines
 
     @magic_arguments()
-    @argument('-a', '--args', type=str, nargs=None, help="In '-one -quoted string', flags and arguments to pass to %%dip.")
+    @argument('-a', '--args', dest='dip_quoted_args', type=str, nargs=None, help="In '--args --in quoted_string', flags and arguments to pass to %%dip.")
     @argument('OnOff', type=str, choices=["on", "off"], nargs='?', help="Turn on auto-%%dip for the cells after this one.")
     @line_magic
     def autodip(self, line:str):
@@ -64,7 +64,7 @@ class DdpMagic(Magics):
             while self.prepender in hooks: hooks.remove(self.prepender)
         elif args.OnOff == "on": # Register the prepender
             self._autodip = "%%dip"
-            if args.args: self._autodip += " " + args.args.replace('"', '')
+            if args.dip_quoted_args: self._autodip += " " + args.dip_quoted_args.replace('"', '')
             if self.prepender not in hooks: hooks.append(self.prepender)
 
         print(f"Auto Execution on DDP group: {'on, will run cell as ' + self._autodip if self._autodip else 'Off'}", flush=True)
@@ -124,14 +124,12 @@ class DdpMagic(Magics):
     @argument('where', nargs='?', type=str, choices=["remote", "local", "everywhere"], default="remote", help="Where to run the cell, default is remote.")
     @cell_magic
     def dip(self, line, cell):
-        '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''
+        '''%%dip - execution in local or remote, or both namespaces.  If remote, the transient output be streamed to the notebook console.'''
         if self.shell is None: raise RuntimeError("%%dip: Not in an ipython Interactive shell!")
-        assert self.ddp and self.ddp.ddp_group, "%%dip: DDP group does not exist yet.  Have you run %ddprep -g <gpu list>?"
         if cell == "": return
 
         args = parse_argstring(self.dip, line)
 
-        gpus = self.ddp.ddp_group
         where = { args.where } if args.where != "everywhere" else { "local", "remote" }
 
         if "local" in where:
@@ -141,8 +139,9 @@ class DdpMagic(Magics):
         
         if "remote" in where:
             if self.ddp is None:
-                Config.Verbose and print("%%dip: No DDP group exists to execute the cell.")
+                Config.Verbose and print("%%dip: No DDP group exists to execute the cell.  Have you run %makedip ?")
                 return
+            gpus = self.ddp.ddp_group
             see_outputs = self.gpu_str2list(args.see) if args.see else None
             Config.Verbose and print(f"%%dip {line}: Running cell in remote DDP namespace (GPUs: {gpus}).", flush=True)
             self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)

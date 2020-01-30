@@ -64,23 +64,18 @@ class IppCluster():
     def kill_cluster(cls, pid=None):
         if pid is None or (not psutil.pid_exists(pid)):
             pid = IppCluster.find_cluster_proc()
-            if pid is None:
-                print_verbose(f"no running ipcluster process.")
-                return
+            if pid is None: return
 
-        terminate_methods = [
-            [f"by 'ipcluster stop'", partial(subprocess.run, ["ipcluster", "stop", IppCluster.cid_flag], capture_output=True)],
-            [f"by os.kill({pid}, SIGINT)", partial(os.kill, pid, signal.SIGINT)],
-        ]
+        terminators = [ [f"by 'ipcluster stop'", partial(subprocess.run, ["ipcluster", "stop", IppCluster.cid_flag], capture_output=True)], ]
+        terminators.append([f"by os.kill({pid}, SIGINT)", partial(os.kill, pid, signal.SIGINT)])
 
         try:
-            for m in terminate_methods:
+            for m in terminators:
                 if psutil.pid_exists(pid):
                     print_verbose(f"Terminating ipcluster process [{pid}] with {m[0]}, just a few seconds ....")
                     m[1]()
                     time.sleep(3)
         except ProcessLookupError: pass
-
 
     def __init__(self, n:int=0, engine_wait:float=15.0):
         popen_cmd = ["ipcluster", "start", IppCluster.cid_flag, "--daemonize"]

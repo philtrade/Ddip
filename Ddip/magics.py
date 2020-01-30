@@ -69,12 +69,6 @@ class DdpMagic(Magics):
 
         print(f"Auto Execution on DDP group: {'on, will run cell as ' + self._autodip if self._autodip else 'Off'}", flush=True)
 
-    def _stopdip(self, line=''):
-        if self.ddp:
-            Config.Verbose and print("Shutting down cluster....", flush=True, file=sys.stderr)
-            self.ddp.shutdown_cluster()
-            self.ddp = None
-
     @magic_arguments()
     @argument('-g', '--gpus', dest='gpus', type=str, nargs='+', help="list of GPU ids to form the DDP group. Use 'all' to specify all available GPUS.")
     @argument('-a', '--app', dest='appname', default=Config.DefaultApp, type=str)
@@ -90,7 +84,10 @@ class DdpMagic(Magics):
 
         if args.verbose: Config.Verbose = args.verbose == "True"
         if args.info: print(self.info())
-        if args.kill or args.restart: self._stopdip()
+        if args.kill or args.restart:
+            Ddp.shutdown(self.ddp)
+            self.ddp = None
+            
         if args.kill: return
 
         if not self.ddp: self.init_ddp()

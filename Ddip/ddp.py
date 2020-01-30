@@ -1,4 +1,5 @@
 import sys, time, os, re, ipyparallel, torch, atexit, subprocess, signal, importlib, psutil
+from functools import partial
 from ipyparallel import AsyncResult
 from ipyparallel.error import CompositeError
 from collections import OrderedDict
@@ -61,20 +62,25 @@ class IppCluster():
 
     @classmethod
     def kill_cluster(cls, pid=None):
-        completed = subprocess.run(["ipcluster", "stop", IppCluster.cid_flag], capture_output=True)
-        if completed.stderr and Config.Verbose:
-            print(f"ipcluster stop returns: {completed.stderr}", file=sys.stderr, flush=True)
-        if pid is None:
+        if pid is None or (not psutil.pid_exists(pid)):
             pid = IppCluster.find_cluster_proc()
+            if pid is None:
+                print_verbose(f"no running ipcluster process.")
+                return
 
-        if pid and psutil.pid_exists(pid):
-            try:
-                os.kill(pid, signal.SIGINT)
-                Config.Verbose and print(f"Sending SIGINT to kill ipcluster process {pid}, just a few seconds...", flush=True, file=sys.stderr)
-                time.sleep(3.0)
-            except ProcessLookupError:
-                pass
-            if not psutil.pid_exists(pid): return
+        terminate_methods = [
+            [f"by 'ipcluster stop'", partial(subprocess.run, ["ipcluster", "stop", IppCluster.cid_flag], capture_output=True)],
+            [f"by os.kill({pid}, SIGINT)", partial(os.kill, pid, signal.SIGINT)],
+        ]
+
+        try:
+            for m in terminate_methods:
+                if psutil.pid_exists(pid):
+                    print_verbose(f"Terminating ipcluster process [{pid}] with {m[0]}, just a few seconds ....")
+                    m[1]()
+                    time.sleep(3)
+        except ProcessLookupError: pass
+
 
     def __init__(self, n:int=0, engine_wait:float=15.0):
         popen_cmd = ["ipcluster", "start", IppCluster.cid_flag, "--daemonize"]
@@ -86,7 +92,7 @@ class IppCluster():
 
         try: self.client = ipyparallel.Client(timeout=engine_wait,cluster_id=f"{IppCluster.cid}")
         except (IOError,TimeoutError) as e: raise Exception(f"ipyparallel Client() failed: {e}")
-        print(f"Connecting to ipyparallel cluster.", file=sys.stderr, end='', flush=True)
+        print_verbose(f"Connecting to ipyparallel cluster.", file=sys.stderr, end='')
         while engine_wait > 0:
             try:
                 self.px_view = self.client[:] # This will turn on ipyparallel's ipython line and cell magics
@@ -96,19 +102,12 @@ class IppCluster():
                 e_ppid = self.client[0].apply_sync(os.getppid)
                 self.e_ppid = e_ppid
 
-                def carefree_kill():
-                    '''cleanup routine not tied to the object itself, ensure the object can be garbage collected after 'del' '''
-                    subprocess.call(["ipcluster", "stop", IppCluster.cid_flag])
-                    try:
-                        os.kill(e_ppid, signal.SIGINT)
-                        Config.Verbose and print("The cluster takes a few secons to shut down....", flush=True, file=sys.stderr)
-                        time.sleep(3.0)
-                    except ProcessLookupError: pass
-                atexit.register(carefree_kill)
-                self.carefree_kill = carefree_kill
+                terminator = partial(IppCluster.kill_cluster, e_ppid)
+                atexit.register(terminator)
+                self.carefree_kill = terminator
 
             except ipyparallel.error.NoEnginesRegistered as e:
-                print('.', file=sys.stderr, end='', flush=True)
+                Config.Verbose and print('.', file=sys.stderr, end='')
                 time.sleep(1)
                 engine_wait -= 1
 
@@ -146,7 +145,7 @@ class Ddp():
         assert torch.cuda.is_available(), "CUDA not available! (Try reloading cuda driver?)"
         self.cluster = self.ddp_group = self._app = None
 
-    def __del__(self): self.shutdown_cluster()
+    def __del__(self): Ddp.shutdown(self)
 
     def set_verbose(self, verbose:bool):
         Config.Verbose = verbose
@@ -161,12 +160,16 @@ class Ddp():
 
     def init_cluster(self, n_engines:int=0): self.cluster = IppCluster(n=n_engines)
 
-    def shutdown_cluster(self):
-        '''Properly shuts down the ipyparallel cluster (of engines).'''
-        self.exit_group()
-        if self.cluster:
-            self.cluster.shutdown()
-            self.cluster = None
+    @classmethod
+    def shutdown(cls, self):
+        '''Makes Ddp.shutdown() a classmethod to to catch any accidentally orphan ipcluster process when ddp group doesn't exist.'''
+        if self:
+            self.exit_group()
+            if self.cluster:
+                self.cluster.shutdown()
+                self.cluster = None
+        else:
+            IppCluster.kill_cluster()
 
     def app_init(self, appname:str):
         '''Configure additional application besides PyTorch op each ipyparallel engine process.
@@ -177,11 +180,11 @@ class Ddp():
         self.app_exit() # Cleanup existing app
 
         if self._app is None:
-            Config.Verbose and print(f"Importing on cluster: {app.imports}", flush=True)
+            print_verbose(f"Importing on cluster: {app.imports}")
             self.cluster.px_view.execute('\n'.join(app.imports), block=True)
             self.cluster.px_view.apply_sync(app.set_verbose, Config.Verbose)
             r = self.cluster.px_view.apply_sync(app.initializer)
-            Config.Verbose and print(f"{appname}:", *r, sep='\n')
+            print_verbose(f"{appname}:", *r, sep='\n')
             self._app = app
 
     def app_exit(self):
@@ -201,7 +204,7 @@ class Ddp():
         assert n_gpu <= len(cl.client), f"More GPU ({gpus}) than ipyparallel engines ({len(cl.client)}). "
         assert max(gpus) < n_device, f"Invalid GPU id {max(gpus)}, highest allowed is {n_device-1}"
 
-        Config.Verbose and print(f"Initializing torch distributed group with GPUs {gpus}", flush=True)
+        print_verbose(f"Initializing torch distributed group with GPUs {gpus}")
 
         if world_size==0: world_size = n_gpu
         for rank,gpu in enumerate(gpus):
@@ -212,7 +215,7 @@ class Ddp():
         cl.px_view = cl.client[gpus]
         cl.px_view.execute(f'from {__name__} import join_group_single, exit_group_single, meminfo, freemem')
         cl.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
-        print("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()], flush=True)
+        print_verbose("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()])
         self.ddp_group = gpus
 
         if appname: self.app_init(appname)
@@ -221,7 +224,7 @@ class Ddp():
         '''Tear down the PyTorch distributed process group on the ipyparallel cluster.'''
         self.app_exit()
         if self.ddp_group is None: return
-        Config.Verbose and print(f"DDP.exit_group(): {self.ddp_group}", flush=True)
+        print_verbose(f"DDP.exit_group(): {self.ddp_group}")
         self.cluster.px_view.execute('exit_group_single()',block=True)
         self.cluster.px_view = self.ddp_group = None
 
@@ -250,7 +253,7 @@ class Ddp():
                 watcher(ar.stdout, see=see)
                 ar.stdout = [] # already displayed, flush the streams, so that display_outputs() below won't re-display them again.
         except KeyboardInterrupt:
-            Config.Verbose and print(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr, flush=True)
+            print_verbose(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr)
             self.cluster.interrupt_engines(self.ddp_group)
 
         # Filter output by the "see" list of GPU ids

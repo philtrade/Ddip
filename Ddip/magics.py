@@ -87,21 +87,14 @@ class DdpMagic(Magics):
         if args.kill or args.restart:
             Ddp.shutdown(self.ddp)
             self.ddp = None
-            
-        if args.kill: return
+            if args.kill: return
 
         if not self.ddp: self.init_ddp()
         self.ddp.set_verbose(Config.Verbose)
 
         if args.gpus:
             gpus = self.gpu_str2list(args.gpus)
-
-            if self.ddp.ddp_group == gpus: # Group desired is already there?
-                print(f"%makedip DDP group unchanged, GPUs ids: {gpus}")
-                return  # same group or empty group => do nothing
-            
             self.ddp.exit_group() # Exit old DDP group if exists
-                
             self.ddp.new_group(gpus=gpus, appname=args.appname)
             self.shell.run_line_magic("pxconfig", "--verbose" if Config.Verbose else "--no-verbose")        
 
@@ -116,40 +109,40 @@ class DdpMagic(Magics):
             self.ddp.push(push_dict)
 
     @magic_arguments()
-    @argument('-g', dest='gpu', type=int, default=0, help="GPU id to fetch the variables from.  Default to GPU 0.")
+    @argument('-r', dest='rank', type=int, default=0, help="Rank of the process to fetch the variables from.  Default to RANK 0.")
     @argument('pull_vars', type=str, nargs='+', help="Pull a list of variables from the DDP group processes to local ipython/notebook namespace.")
     @line_magic
     def dipull(self, line=''):
         args = parse_argstring(self.dipull, line)
         Config.Verbose and print(f"Pulling from DDP namespace: {args.pull_vars}", flush=True)
-        remote_dict = self.ddp.pull(args.pull_vars)
+        remote_dict = self.ddp.pull(args.pull_vars, rank=args.rank)
         self.shell.user_ns.update(remote_dict)
 
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
-    @argument('-S', '--see', dest='see', type=str, nargs='+', help="Specify which processes' output to show, by GPU ids. List of integers or 'all'. Default to 0.")
+    @argument('-S', '--see', dest='see', type=str, nargs='+', help="display outputs from process specified by a list of ranks, or 'all'. Default to 0.")
     @argument('where', nargs='?', type=str, choices=["remote", "local", "everywhere"], default="remote", help="Where to run the cell, default is remote.")
     @cell_magic
-    def dip(self, line, cell=None):
+    def dip(self, line, cell):
         '''%%dip - Parallel execution on cluster, allows transient output be displayed.'''
         if self.shell is None: raise RuntimeError("%%dip: Not in an ipython Interactive shell!")
         assert self.ddp and self.ddp.ddp_group, "%%dip: DDP group does not exist yet.  Have you run %ddprep -g <gpu list>?"
+        if cell == "": return
 
         args = parse_argstring(self.dip, line)
 
-        if cell is None: return
-
-        # '--to [gpu|local|both]': Where to run the cell
         gpus = self.ddp.ddp_group
         where = { args.where } if args.where != "everywhere" else { "local", "remote" }
 
         if "local" in where:
-            # To run a cell inside "%%dip" locally, insert a "stop sign" in the first line,
-            # it'll then bypass any %autodip cell transformer, and won't end up here again.
+            # Insert magic string in the first line, to suppress %autodip cell mods, and prevent infitely looking back here again.
             Config.Verbose and print(f"%%dip {line}: Running cell in local namespace.", flush=True)
             self.shell.run_cell(f"{DdpMagic._no_mod}\n"+cell, silent = args.quiet)
         
         if "remote" in where:
+            if self.ddp is None:
+                Config.Verbose and print("%%dip: No DDP group exists to execute the cell.")
+                return
             see_outputs = self.gpu_str2list(args.see) if args.see else None
             Config.Verbose and print(f"%%dip {line}: Running cell in remote DDP namespace (GPUs: {gpus}).", flush=True)
             self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)

@@ -236,9 +236,9 @@ class Ddp():
         v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
         v.update(push_dict)
 
-    def pull(self, names:List[str], gpu:int=0):
+    def pull(self, names:List[str], rank:int=0):
         ''' retrieve a list of variables from a single DDP process of a particular gpu'''
-        r = self.cluster.px_view.pull(names, targets=gpu, block=True)
+        r = self.cluster.px_view.pull(names, targets=rank, block=True)
         return { n : v for n,v in zip(names,r) }
 
     def run_cell(self, cell:str, gpus:List[int]=None, quiet:bool=False, see:List[int]=None):

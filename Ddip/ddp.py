@@ -252,6 +252,8 @@ class Ddp():
                 while not ar.ready(): watcher(ar.stdout, see=see) # Simulate wait on blocking execution
                 watcher(ar.stdout, see=see)
                 ar.stdout = [] # already displayed, flush the streams, so that display_outputs() below won't re-display them again.
+            else:
+                ar.get()
         except KeyboardInterrupt:
             print_verbose(f"Caugth interrupt, sending SIGINT to engines....", file=sys.stderr)
             self.cluster.interrupt_engines(self.ddp_group)

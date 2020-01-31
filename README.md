@@ -50,7 +50,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 * Further readings: [PyTorch Lightning -- Tips for faster training ](https://towardsdatascience.com/9-tips-for-training-lightning-fast-neural-networks-in-pytorch-8e63a502f565), [On the performance of different training parallelism](http://www.telesens.co/2019/04/04/distributed-data-parallel-training-using-pytorch-on-aws/)
 
 
-3. <a name="ipp"></a>On `ipyparallel`, a few resources and inspirations to `Ddip`:
+3. <a name="ipp"></a>On `ipyparallel`:
 * [The Official ipyparallel Documentation](https://ipyparallel.readthedocs.io/en/latest/intro.html)
 * [An Intro to ipyparallel](http://activisiongamescience.github.io/2016/04/19/IPython-Parallel-Introduction/), *Activevision Game Science*
 * [Using ipyparallel](http://people.duke.edu/~ccc14/sta-663-2016/19C_IPyParallel.html), *Duke University, "Computational Statistics in Python"*

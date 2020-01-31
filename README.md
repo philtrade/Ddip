@@ -6,12 +6,18 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Features:
 
-`Ddip` was designed to make experiments with multiple GPU/Distributed Data Parallel training a little bit easier in Fastai notebooks. Towards that end:
+`Ddip` was conceived to address a gap mentioned by FastAI's [How to launch a distributed training](https://docs.fast.ai/distributed.html), that "*Distributed training doesn’t work in a notebook...*".
 
-1. Easy switching of code execution between PyTorch's multiprocess DDP group, and that in the local notebook namespace.
-2. Automatic garbage collection and freeing GPU cache memory after parallel execution of a cell, thus reducing the occurence of GPU out of memory error.
-3. Minimize code changes to Fastai `course v3` lesson notebooks to run in DDP -- usually 3-5 lines of iPython `%,%%` magics will do -- while keeping the look-and-feel as identical as possible.  E.g. real time progress bar, `Learner.lr_find()` works like the same as in non-distributed mode.
-4. Extensible to support future versions of fastai library.  Porting to `fastai v2` is a high priority to-do.
+`Ddip` tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
+
+1. Switch execution between PyTorch's multiprocess DDP group and local notebook namespace with ease.
+
+2. Automatic `gc.collect()` and `torch.cuda.empty_cache()` after parallel execution to avoid OOM.
+
+3. Usually 3 - 5 lines of '%','%%' to port a Fastai `course v3` lesson notebooks to run in DDP, almost identical look and feel.
+
+4. Extensible.  Porting to `fastai v2` is a high priority to-do.
+5. Abstracted away the detail plumbing to harmonize `fastai`, `PyTorch DDP` and `ipyparallel` work with each other in the notebook environment.
 
 
 ## Installation:
@@ -19,14 +25,13 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 `pip install git+https://github.com/philtrade/ipyparallel-torchddp.git`
 
 ## Overview and Examples:
-### Quick Overview of `Ddip` line and cell magics
+### `Ddip` provides these iPython line and cell magics:
 * `%load_ext Ddip`,  to load the extension
-* `%makedip` to start/stop/restart a Distributed Data Parallel process group.  
-    E.g. to initialize `fastai` to use DDP in the notebook: `%makedip -g all -a fastai_v1`
-* `%%dip {remote | local | everywhere}` , to  execute a cell in DDP, local notebook, or both namespaces.
-* `%autodip {on | off}`, to automatically execute subsequent cells in the DDP group, without requiring `%%dip` every time.
-* `%dipush bs src func1 .....`, to push `bs`, `src`, and `func1` from notebook to the DDP processes
-* `%dipll foo bar`, to pull objects named `foo` and `bar` from rank-0 DDP process into the local notebook
+* `%makedip ...` to start/stop/restart a Distributed Data Parallel process group.  
+* `%%dip ...` , to execute a cell in DDP, local notebook, or both.
+* `%autodip ...`, to automatically execute subsequent cells in the DDP group, without requiring `%%dip` every time.
+* `%dipush ...`, and `%dipull`, to pass things between the notebook and the DDP namespaces
+
 
 ### Examples:
 * [The `fastai` lesson3-camvid notebook using `Ddip` to train in DDP](notebooks/Ddip_usage_fastai.ipynb),

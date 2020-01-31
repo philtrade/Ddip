@@ -6,20 +6,20 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Features:
 
-`Ddip` was conceived to address an unfilled gap mentioned in FastAI's [How to launch a distributed training](https://docs.fast.ai/distributed.html), that:
-" *Distributed training doesn’t work in a notebook ...*"
+    "Distributed training doesn’t work in a notebook..."
 
+     
+ -- *FastAI's tutorial: [How to launch a distributed training](https://docs.fast.ai/distributed.html)*
 
-`Ddip` tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
+`Ddip` was conceived to address the above unfilled gap. It tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
 
-1. Switch execution between PyTorch's multiprocess DDP group and local notebook namespace with ease.
+1. Switch execution easily between PyTorch's multiprocess DDP group and local notebook namespace.
 
-2. Automatic `gc.collect()` and `torch.cuda.empty_cache()` after parallel execution to avoid OOM.
+2. Automatic `gc.collect()` and `torch.cuda.empty_cache()` after parallel execution to avoid out of memory errors.
 
-3. Usually 3 - 5 lines of '%','%%' to port a Fastai `course v3` notebooks to run in DDP.
+3. Usually only requires 3 - 5 lines of iPython magics to port a Fastai `course v3` notebook to run in DDP.
 
-4. Extensible.  Porting to `fastai v2` is a high priority to-do.
-5. Abstracted away the detail plumbing to harmonize `fastai`, `PyTorch DDP` and `ipyparallel` work with each other in the notebook environment.
+4. Extensible.  `Ddip` now works for `fastai v1`,  support for the upcoming `fastai v2` is planned.
 
 
 ## Installation:

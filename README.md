@@ -7,7 +7,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 ## Features:
 
     "Distributed training doesn’t work in a notebook..."
->>>>>>-- *FastAI's tutorial on [How to launch a distributed training](https://docs.fast.ai/distributed.html)*
+>>>>-- *FastAI's tutorial on [How to launch a distributed training](https://docs.fast.ai/distributed.html)*
 
 `Ddip` was conceived to address the above, with the following features:
 
@@ -15,10 +15,12 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 2. Automatically empties cuda cache after executing a cell in DDP group, to reduce the likelihood of OOM errors in a long notebook session.
 
-3. Usually takes only 3 - 5 lines of iPython magics to port a Fastai `course v3` notebook to run in DDP.
+3. Takes only 3 - 5 lines of iPython magics to port a Fastai `course v3` notebook to run in DDP.
 
-4. Support for `fastai v1` is implemented as a loadable module, the same can be done for `fastai v2`.
 
+4. Extensible architecture.  Future support for `fastai v2` could be implemented as a loadable module, like that for `fastai v1`.
+
+Here is a summary of the [*speedup observed in FastAI notebooks when trained with 3 GPUs*](docs/speedups_dl1.md).
 
 ## Installation:
 
@@ -38,7 +40,6 @@ Example notebooks for: [`%makedip`](notebooks/usage_%makedip.ipynb), [`%%dip` an
 
 ## How to run DDP with in FastAI notebooks with `Ddip`:
 * [Tutorial on Distributed Training in `fastai` Notebook](notebooks/Ddip_usage_fastai.ipynb)
-* [Speedup Observed in FastAI Notebooks](docs/speedups_dl1.md)
 * [More Notebooks](notebooks/)
 
 ## [Known Issues and Room for Improvements](Issues.md)

@@ -1,17 +1,33 @@
-## Limitations, Issues, and Bugs:
+
+# Known Issues and Things to Improve
+
+    "..finish something.... like properly, finish it."
+> > > *Jeremey Howard*, [2:07:40, Lesson 7, Deep Learning Part 1 Course V3](https://www.youtube.com/watch?v=9spwoDYwW_I&feature=youtu.be&t=7660).
+
+The journey to build `Ddip` has been incredibly fruitful, and yet plenty more fruits to pick ahead.  Among them, a few highlights:
+
+> * Build a module to work with `fastai v2`, the new version of fastai as of year 2020.
+> * Investigate the *training quality problem* in lesson3-imdb, and *performance issues* in lesson3-pets-more (no speed up), and lesson7-wgan (linear slow down!!))
+> * Try the **`nbdev`** development approach.
+> * ... 
+
+*and I am sure you and the community have many great ideas, so I invite you to send me feedbacks, thoughts, questions, and constructive criticisms.*
+
+
+## Limitations and Bugs
 
 * **Works in Single Host with Multiple GPU only**
 
-    `ddipp` was developed/tested on a single host with multiple GPUs, and may not work in "*multiple nodes x multiple GPU*" yet.
+    `Ddip` was developed/tested on a single host with multiple GPUs, and may not work in "*multiple nodes x multiple GPU*" yet.  But the underlying fabric `ipyparallel` does support distributed, parallel computing well, so it should be doable.
 
 * **Process group must starts with GPU 0, and in consecutive, ascending order**
 
     In other words, on a host with GPU [0,1,2,3], the following DDP group specification may not work properly yet: 
     `3,2,1,0`, or `1,2,3`, or `0,3` etc...
 
-* **Problems with FastAI notebooks:**
+* **Issues with FastAI notebooks:**
     * Progress Bar: Only the ascii/ConsoleProgress, not the HTML version, is supported at present.
-    * lesson6-pets-more the cnn_learner doesn't show training speed-up with multiple GPUs
+    * lesson6-pets-more doesn't gain any speedup with DDP, lesson7-wgan shows linear slow-down (3X training time with 3 GPUs vs 1 GPU)
 
     * lesson3-imdb, a langauge modelling task, doesn't seem to train correctly when in multiple-GPU DDP mode.
 

@@ -52,12 +52,9 @@
 
     ```
 
-* To run one cell locally, regardless %autodip is on or off, insert any of below as the first line of the cell:
+* To run one cell locally, regardless %autodip is on or off:
     ```
-    #dip_locally
-    ```
-    ```
-    %%dip locally [optional flags..]
+    %%dip local
     ```
 
 

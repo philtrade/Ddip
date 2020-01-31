@@ -16,7 +16,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 2. Automatic `gc.collect()` and `torch.cuda.empty_cache()` after parallel execution to avoid OOM.
 
-3. Usually 3 - 5 lines of '%','%%' to port a Fastai `course v3` lesson notebooks to run in DDP, almost identical look and feel.
+3. Usually 3 - 5 lines of '%','%%' to port a Fastai `course v3` notebooks to run in DDP.
 
 4. Extensible.  Porting to `fastai v2` is a high priority to-do.
 5. Abstracted away the detail plumbing to harmonize `fastai`, `PyTorch DDP` and `ipyparallel` work with each other in the notebook environment.

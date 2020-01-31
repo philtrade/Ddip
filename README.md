@@ -20,7 +20,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 4. Extensible architecture.  Future support for `fastai v2` could be implemented as a loadable module, like that for `fastai v1`.
 
-Here is a summary of the [*speedup observed in FastAI notebooks when trained with 3 GPUs*](docs/speedups_dl1.md).
+Summary of [*speedup observed in FastAI notebooks when trained with 3 GPUs*](docs/speedups_dl1.md).
 
 ## Installation:
 
@@ -36,10 +36,10 @@ Current version: 0.1.0
 * `%autodip ...`, to execute subsequent cells in the DDP group, without requiring `%%dip` every time.
 * `%dipush`, and `%dipull`, to pass things between the notebook and the DDP namespaces.
 
-Example notebooks for: [`%makedip`](notebooks/usage_%makedip.ipynb), [`%%dip` and `%autodip`](notebooks/usage_%%dip_%autodip.ipynb), and [`%dipush` and `%dipull`](notebooks/usage_%dipush_%dipull.ipynb)
 
 ## How to run DDP with in FastAI notebooks with `Ddip`:
 * [Tutorial on Distributed Training in `fastai` Notebook](notebooks/Ddip_usage_fastai.ipynb)
+* More detail guides on 1. [`%makedip`](notebooks/usage_%makedip.ipynb), 2. [`%%dip` and `%autodip`](notebooks/usage_%%dip_%autodip.ipynb), and 3. [`%dipush` and `%dipull`](notebooks/usage_%dipush_%dipull.ipynb).
 * [More Notebooks](notebooks/)
 
 ## [Known Issues and Room for Improvements](Issues.md)

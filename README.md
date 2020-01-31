@@ -6,7 +6,9 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Features:
 
-`Ddip` was conceived to address a gap mentioned by FastAI's [How to launch a distributed training](https://docs.fast.ai/distributed.html), that "*Distributed training doesn’t work in a notebook...*".
+`Ddip` was conceived to address an unfilled gap mentioned in FastAI's [How to launch a distributed training](https://docs.fast.ai/distributed.html), that:
+" *Distributed training doesn’t work in a notebook ...*"
+
 
 `Ddip` tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
 

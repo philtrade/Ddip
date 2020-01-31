@@ -11,7 +11,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
      
  -- *FastAI's tutorial: [How to launch a distributed training](https://docs.fast.ai/distributed.html)*
 
-`Ddip` was conceived to address the above unfilled gap. It tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
+`Ddip` was conceived to address the above. It tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
 
 1. Switch execution easily between PyTorch's multiprocess DDP group and local notebook namespace.
 

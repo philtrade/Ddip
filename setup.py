@@ -10,7 +10,7 @@ setuptools.setup(
     version="0.1",
     author='Phillip K.S. Chu',
     author_email='philtrade@winphil.net',
-    url='https://github.com/philtrade/ipyparallel-torchddp',
+    url='https://github.com/philtrade/Ddip',
     description="Harness Fastai Distributed Data Parallel (DDP) training in iPython/Jupyter notebook",
     long_description=long_description,
     long_description_content_type="text/markdown",

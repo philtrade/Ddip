@@ -11,34 +11,36 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
      
  -- *FastAI's tutorial: [How to launch a distributed training](https://docs.fast.ai/distributed.html)*
 
-`Ddip` was conceived to address the above. It tries to make notebook experiments in FastAI to take advantage of multi-GPU/DDP a little easier:
+`Ddip` was conceived to address the above, with the following features:
 
 1. Switch execution easily between PyTorch's multiprocess DDP group and local notebook namespace.
 
-2. Automatic `gc.collect()` and `torch.cuda.empty_cache()` after parallel execution to avoid out of memory errors.
+2. Automatically empties cuda cache after executing a cell in DDP group, to reduce the likelihood of OOM errors in a long notebook session.
 
 3. Usually only requires 3 - 5 lines of iPython magics to port a Fastai `course v3` notebook to run in DDP.
 
-4. Extensible.  `Ddip` now works for `fastai v1`,  support for the upcoming `fastai v2` is planned.
+4. Support for `fastai v1` is implemented as a loadable module, the same can be done for `fastai v2`.
 
 
 ## Installation:
 
 `pip install git+https://github.com/philtrade/Ddip.git`
 
-## Overview and Examples:
+## Overview:
 ### `Ddip` provides these iPython line and cell magics:
 * `%load_ext Ddip`,  to load the extension.
-* `%makedip ...` to start/stop/restart a Distributed Data Parallel process group.  
-* `%%dip ...` , to execute a cell in DDP, local notebook, or both.
-* `%autodip ...`, to automatically execute subsequent cells in the DDP group, without requiring `%%dip` every time.
-* `%dipush ...`, and `%dipull`, to pass things between the notebook and the DDP namespaces.
+* `%makedip ...` to start/stop/restart a DDP group, and initialize a module such as `fastai_v1`.  
+* `%%dip ...` , to execute a cell in the DDP group, or local notebook, or both.
+* `%autodip ...`, to execute subsequent cells in the DDP group, without requiring `%%dip` every time.
+* `%dipush`, and `%dipull`, to pass things between the notebook and the DDP namespaces.
 
+Example notebooks for: [`%makedip`](notebooks/usage_%makedip.ipynb), [`%%dip` and `%autodip`](notebooks/usage_%%dip_%autodip.ipynb), and [`%dipush` and `%dipull`](notebooks/usage_%dipush_%dipull.ipynb)
 
-### Examples:
-* [Porting `fastai` lesson3-camvid notebook to train in DDP](notebooks/Ddip_usage_fastai.ipynb)
+## How to run DDP with in FastAI notebooks with `Ddip`:
+* [Tutorial on Distributed Training in `fastai` Notebook](notebooks/Ddip_usage_fastai.ipynb)
 * [More notebooks](notebooks/)
-## [Known Limitations, Issues, Bugs and Features to Add](Issues.md)
+
+## [Known Issues and Room for Improvements](Issues.md)
 
 ## References:
 

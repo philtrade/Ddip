@@ -22,7 +22,9 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 ## Installation:
 
-`pip install git+https://github.com/philtrade/Ddip.git`
+Current version: 0.1.0
+
+`pip install git+https://github.com/philtrade/Ddip.git@v0.1.0#egg=Ddip`
 
 ## Overview:
 ### `Ddip` provides these iPython line and cell magics:

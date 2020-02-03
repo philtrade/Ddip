@@ -188,6 +188,12 @@ class Ddp():
             self.cluster.px_view.apply_sync(self._app.finalizer)
             self._app = None
 
+    def app_run_cmd(self, cmd:str):
+        if self._app:
+            func = getattr(self._app, cmd, None)
+            if type(func).__name__ == 'function': self.cluster.px_view.apply_sync(func)
+            else: print_verbose(f"{cmd} not found in {self._app}")
+
     def gpus_str(self): return ','.join(map(str, self.ddp_group))
 
     def new_group(self, gpus:List[int], appname:str=None, node_rank:int=0, world_size:int=0):

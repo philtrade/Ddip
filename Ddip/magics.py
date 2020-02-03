@@ -121,6 +121,7 @@ class DdpMagic(Magics):
     @magic_arguments()
     @argument('-q', '--quiet', dest='quiet', action='store_true', default=False, help="Display any stdout only after task is finished, skip all the transient, real-time output.")
     @argument('-S', '--see', dest='see', type=str, nargs='+', help="display outputs from process specified by a list of ranks, or 'all'. Default to 0.")
+    @argument('-a', '--appcmd', dest='appcmd', type=str, help="Pass a command to the app.")
     @argument('where', nargs='?', type=str, choices=["remote", "local", "everywhere"], default="remote", help="Where to run the cell, default is remote.")
     @cell_magic
     def dip(self, line, cell):
@@ -143,6 +144,7 @@ class DdpMagic(Magics):
                 return
             gpus = self.ddp.ddp_group
             see_outputs = self.gpu_str2list(args.see) if args.see else None
+            if args.appcmd: self.ddp.app_run_cmd(args.appcmd)
             Config.Verbose and print(f"%%dip {line}: Running cell in remote DDP namespace (GPUs: {gpus}).", flush=True)
             self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)
         

@@ -13,7 +13,7 @@ FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,)
 Config = SimpleNamespace(Verbose = False, lr_find_rank = 0, fake_recorder = None, pid = os.getpid())
 
 imports = [ 'import fastai, fastai.torch_core, torch, fastprogress', 'from fastai.distributed import *',
-    f"from {__name__} import initializer, finalizer, set_verbose, lr_find_bypass",]
+    f"from {__name__} import initializer, finalizer, set_verbose, lr_find_bypass, auto_to_distribute",]
 
 def set_verbose(verbose:bool=True): Config.Verbose = verbose
 def print_verbose(*args, **kwargs): Config.Verbose and print(f"Proc [{Config.pid}]", *args, **kwargs, flush=True)
@@ -40,20 +40,37 @@ def _post_init_DDP(learner):
     FastaiSaver.post_init(learner)
     learner.to_distributed(torch.cuda.current_device())
 
-def ddpify_Learner_class():
+def manual_to_distribute():
+    if FastaiSaver.post_init is not None:
+        Learner.__post_init__ = FastaiSaver.post_init
+        FastaiSaver.post_init = None
+
+def auto_to_distribute():
     if FastaiSaver.post_init is None:  # Intercept Learner.__post_init__() to append our own handler
         FastaiSaver.post_init = Learner.__post_init__
-        FastaiSaver.lr_find = Learner.lr_find
-        Config.fake_recorder = FakeRecorder()
         Learner.__post_init__ = _post_init_DDP
+
+def intercept_lr_finder():
+    if FastaiSaver.lr_find is None:
+        FastaiSaver.lr_find = Learner.lr_find
         Learner.lr_find = lr_find_bypass
+
+def recoder_not_found_fallback():
+    if Config.fake_recorder is None:
+        Config.fake_recorder = FakeRecorder()
         Learner.__getattr__ = learner_getattr_override
+
+def ddpify_Learner_class():
+    auto_to_distribute()
+    intercept_lr_finder()
+    recoder_not_found_fallback()
 
 def restore_Learner_class():
     if FastaiSaver.post_init is not None:
         Learner.__post_init__ = FastaiSaver.post_init
+    if FastaiSaver.lr_find is not None:
         Learner.lr_find = FastaiSaver.lr_find
-        FastaiSaver.post_init = FastaiSaver.lr_find = None
+    FastaiSaver.post_init = FastaiSaver.lr_find = None
 
 def to_non_distributed(learn:Learner):
     '''Undo the preparation for DDP mode on this learner instance.'''

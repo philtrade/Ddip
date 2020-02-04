@@ -29,7 +29,7 @@ def join_group_single(g_rank:int, l_rank:int, gpu:int, ws:int):
     os.environ["WORLD_SIZE"] = str(ws)
     os.environ["OMP_NUM_THREADS"] = str(1) # See https://github.com/pytorch/pytorch/pull/22501
     torch.cuda.set_device(gpu)
-    if ws > 1: torch.distributed.init_process_group(backend='nccl', init_method='env://')
+    if ws > 0: torch.distributed.init_process_group(backend='nccl', init_method='env://')
     return os.environ["LOCAL_RANK"]
 
 def exit_group_single():

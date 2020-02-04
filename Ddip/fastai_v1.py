@@ -1,16 +1,17 @@
 import sys, time, os, torch, atexit, dataclasses
 from types import SimpleNamespace
 from typing import List
-from fastai.distributed import DistributedTrainer, DistributedRecorder
 from fastai.torch_core import *
 from fastai import basic_data, basic_train, core, text, train
 from fastai.basic_train import Learner
 from fastai.callbacks.lr_finder import LRFinder
+from fastai.distributed import DistributedTrainer, DistributedRecorder
+
 import fastprogress
 from fastprogress.fastprogress import master_bar, progress_bar, force_console_behavior, IN_NOTEBOOK
 
 FastaiSaver = SimpleNamespace(post_init = None, lr_find = None,)
-Config = SimpleNamespace(Verbose = False, lr_find_rank = 0, fake_recorder = None, pid = os.getpid())
+Config = SimpleNamespace(Verbose = False, lr_find_rank = 0, patch_lr_finder =True, fake_recorder = None, pid = os.getpid())
 
 imports = [ 'import fastai, fastai.torch_core, torch, fastprogress', 'from fastai.distributed import *',
     f"from {__name__} import initializer, finalizer, set_verbose, lr_find_bypass, auto_to_distribute",]
@@ -62,7 +63,7 @@ def recoder_not_found_fallback():
 
 def ddpify_Learner_class():
     auto_to_distribute()
-    intercept_lr_finder()
+    if Config.patch_lr_finder: intercept_lr_finder()
     recoder_not_found_fallback()
 
 def restore_Learner_class():
@@ -88,7 +89,7 @@ def lr_find_bypass(learn:Learner, *args, **kwargs):
     if my_rank == Config.lr_find_rank:
         to_non_distributed(learn)  # Uninstall DistributedTrainer and DistributedRecorder
         ws = os.environ.get('WORLD_SIZE', 0) # Prevent distributed barrier from kicking in
-        if ws: os.environ['WORLD_SIZE'] = str(1)
+        if ws: os.environ['WORLD_SIZE'] = str(0)
 
         print_verbose(f"Rank [{Config.lr_find_rank}] Running lr_find() in non DDP mode")
         FastaiSaver.lr_find(learn, *args, **kwargs)

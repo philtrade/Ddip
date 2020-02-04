@@ -143,7 +143,7 @@ class DdpMagic(Magics):
                 Config.Verbose and print("%%dip: No DDP group exists to execute the cell.  Have you run %makedip ?")
                 return
             gpus = self.ddp.ddp_group
-            see_outputs = self.gpu_str2list(args.see) if args.see else None
+            see_outputs = list(filter(lambda x: x in gpus, self.gpu_str2list(args.see))) if args.see else None
             if args.appcmd: self.ddp.app_run_cmd(args.appcmd)
             Config.Verbose and print(f"%%dip {line}: Running cell in remote DDP namespace (GPUs: {gpus}).", flush=True)
             self.ddp.run_cell(cell, gpus=gpus, quiet=args.quiet, see=see_outputs)

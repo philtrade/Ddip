@@ -15,6 +15,6 @@ Hardware: 3 GTX 1080ti on PCI3 x16,x16,x8 respectively, 32GB main memory, 1TB SS
 | [lesson6-rossmann](lesson6-rossmann.ipynb): | [1:45,1:45,1:45]    |    [3:05, 3:05, 3:05] |
 | [lesson7-human-numbers](lesson7-human-numbers.ipynb): | Training time too short | |
 | [lesson7-superres-imagenet](lesson7-superres-imagenet.ipynb): | [4:17] | [10:50] | |
-| lesson7-wgan: | [13:30/epoch] Worse with DDP !  | [4:41/epoch]
+| lesson7-wgan: | [13:30/epoch] ***Ouch***!  | [4:41/epoch]
 
 

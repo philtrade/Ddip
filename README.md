@@ -17,7 +17,7 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 3. Reduce chance of GPU out of memory error by automatically emptying GPU cache memory after executing a cell in the GPU proc.
 
-4. Extensible architecture.  Future support for `fastai v2` could be implemented as a loadable module, like that for `fastai v1`.
+4. Extensible, to support future versions of `fastai`.
 
 Summary of [*speedup observed in FastAI notebooks when trained with 3 GPUs*](docs/speedups_dl1.md).
 

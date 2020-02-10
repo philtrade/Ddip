@@ -13,10 +13,9 @@ Platform tested: single host with multiple Nvidia CUDA GPUs, Ubuntu linux + PyTo
 
 1. Switch execution easily between PyTorch's multiprocess DDP group and local notebook namespace.
 
-2. Automatically empties cuda cache after executing a cell in DDP group, to reduce the likelihood of OOM errors in a long notebook session.
+2. Takes 3 - 5 lines of iPython magics to port a Fastai `course v3` notebook to train in DDP.
 
-3. Takes only 3 - 5 lines of iPython magics to port a Fastai `course v3` notebook to run in DDP.
-
+3. Reduce chance of GPU out of memory error by automatically emptying GPU cache memory after executing a cell in the GPU proc.
 
 4. Extensible architecture.  Future support for `fastai v2` could be implemented as a loadable module, like that for `fastai v1`.
 
@@ -38,8 +37,11 @@ Current version: 0.1.0
 
 
 ## How to run DDP with in FastAI notebooks with `Ddip`:
-* [Tutorial on Distributed Training in `fastai` Notebook](notebooks/Ddip_usage_fastai.ipynb)
-* More detail guides on 1. [`%makedip`](notebooks/usage_%makedip.ipynb), 2. [`%%dip` and `%autodip`](notebooks/usage_%%dip_%autodip.ipynb), and 3. [`%dipush` and `%dipull`](notebooks/usage_%dipush_%dipull.ipynb).
+* [Distributed Training in `fastai` Notebook using `Ddip` - a tutorial](notebooks/Ddip_usage_fastai.ipynb)
+* Example notebooks of `Ddip` iPython magics:
+    - [`%makedip`](notebooks/usage_%25makedip.ipynb)
+    - [`%%dip` `%autodip`](notebooks/usage_%25%25dip_%25autodip.ipynb)
+    - [`%dipush` `%dipull`](notebooks/usage_%25dipush_%25dipull.ipynb).
 * [More Notebooks](notebooks/)
 
 ## [Known Issues and Room for Improvements](Issues.md)

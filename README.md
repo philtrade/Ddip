@@ -28,12 +28,12 @@ Current version: 0.1.0
 `pip install git+https://github.com/philtrade/Ddip.git@v0.1.0#egg=Ddip`
 
 ## Overview:
-### `Ddip` provides these iPython line and cell magics:
+### Control DDP and cell execution destination using `%` and `%%` magics:
 * `%load_ext Ddip`,  to load the extension.
-* `%makedip ...` to start/stop/restart a DDP group, and initialize a module such as `fastai_v1`.  
-* `%%dip ...` , to execute a cell in the DDP group, or local notebook, or both.
-* `%autodip ...`, to execute subsequent cells in the DDP group, without requiring `%%dip` every time.
-* `%dipush`, and `%dipull`, to pass things between the notebook and the DDP namespaces.
+* `%makedip ...`, to start/stop/restart a DDP group, and an app, e.g. `fastai_v1`.  
+* `%%dip {remote, local, everywhere} ...`, where to execute the cell.
+* `%autodip {on,off}`, to automatically prepend `%%dip` to subsequent cells.
+* `%dipush`, and `%dipull`, to pass objects between the notebook and the DDP namespaces.
 
 
 ## How to run DDP with in FastAI notebooks with `Ddip`:

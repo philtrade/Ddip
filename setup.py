@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="Ddip-philtrade",
-    version="0.1.0",
+    version="0.1.1",
     author='Phillip K.S. Chu',
     author_email='philtrade@winphil.net',
     url='https://github.com/philtrade/Ddip',

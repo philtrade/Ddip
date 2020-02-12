@@ -23,9 +23,9 @@ Summary of [*speedup observed in FastAI notebooks when trained with 3 GPUs*](doc
 
 ## Installation:
 
-Current version: 0.1.0
+Current version: 0.1.1
 
-`pip install git+https://github.com/philtrade/Ddip.git@v0.1.0#egg=Ddip`
+`pip install git+https://github.com/philtrade/Ddip.git@v0.1.1#egg=Ddip`
 
 ## Overview:
 ### Control DDP and cell execution destination using `%` and `%%` magics:

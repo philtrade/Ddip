@@ -7,7 +7,6 @@
 The journey to build `Ddip` has been incredibly fruitful, and yet plenty more fruits to pick ahead.  Among them, a few highlights:
 
 > * Build a module to work with `fastai v2`, the new version of fastai as of year 2020.
-> * Investigate the *training quality problem* in lesson3-imdb, and *performance issues* in lesson3-pets-more (no speed up), and lesson7-wgan (linear slow down!!))
 > * Try the **`nbdev`** development approach.
 > * ... 
 
@@ -25,11 +24,13 @@ The journey to build `Ddip` has been incredibly fruitful, and yet plenty more fr
     In other words, on a host with GPU [0,1,2,3], the following DDP group specification may not work properly yet: 
     `3,2,1,0`, or `1,2,3`, or `0,3` etc...
 
-* **Issues with FastAI notebooks:**
-    * Progress Bar: Only the ascii/ConsoleProgress, not the HTML version, is supported at present.
-    * lesson6-pets-more doesn't gain any speedup with DDP, lesson7-wgan shows linear slow-down (3X training time with 3 GPUs vs 1 GPU)
+**Issues with FastAI notebooks:**
 
-    * lesson3-imdb, a langauge modelling task, doesn't seem to train correctly when in multiple-GPU DDP mode.
+* Performance issues: lesson6-pets-more no speedup with DDP, lesson7-wgan no speedup with DDP.  lesson3-imdb slows down first with 2 GPUs, then speed up.
+
+ - [X] Fixed in [PR #2498](https://github.com/fastai/fastai/pull/2498) lesson7-wgan shows linear slow-down (3X training time with 3 GPUs vs 1 GPU)
+
+ - [X] [Issue #2501](https://github.com/fastai/fastai/issues/2501) lesson3-imdb, a langauge modelling task, doesn't seem to train correctly when in multiple-GPU DDP mode.
 
         When loaded with a previously trained encoder `fine_tuned_enc`, the next `learn.fit_one_cycle(1, 2e-2, moms=(0.8,0.7))` accuracy is stuck at 49.xx%, not the supposed 92%+.
 
@@ -39,7 +40,8 @@ The journey to build `Ddip` has been incredibly fruitful, and yet plenty more fr
     So far FastAi's lesson notebooks are used as integration test.  `ddipp` needs and will benefit from some unit tests.
 * **Support for DDP in multiple nodes x multiple GPUs configuration**
 
-* **Reimplement learning rate finder bypass and automatic garbage collection using fastai's callback mechanism**
+- [X] Fixed in [PR #2487](https://github.com/fastai/fastai/pull/2487): Reimplement learning rate finder bypass
+* Automatic garbage collection using fastai's callback mechanism?
     
     Current impementation monkey-patches up the code at runtime.  Using `fastai`'s callback maybe a much cleaner solution.  E.g. only do garbage collection at the end of a fit(), instead of only at the end of a notebook cell execution.
 

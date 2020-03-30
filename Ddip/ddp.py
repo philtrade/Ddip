@@ -233,6 +233,8 @@ class Ddp():
 
     def meminfo(self): return self._apply_async(meminfo)
 
+    def dv(self): return self.cluster.px_view if self.cluster else None
+    
     def push(self, push_dict, gpus:List[int]=None):
         v = self.cluster.px_view if gpus is None else self.cluster.client[gpus]
         v.update(push_dict)

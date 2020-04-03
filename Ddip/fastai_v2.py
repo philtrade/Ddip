@@ -20,24 +20,6 @@ imports = [ 'import fastai2, torch, fastprogress, fastai2.torch_core',
 def set_verbose(verbose:bool=True): Config.Verbose = verbose
 def print_verbose(*args, **kwargs): Config.Verbose and print(f"Proc [{Config.pid}]", *args, **kwargs, flush=True)
 
-'''
-def _post_init_DDP(learner):
-    "Make a freshly created Learner object to run in DDP mode when training."
-    assert FastaiSaver.post_init, " Original fastai.Learner.__post_init__ not saved yet!"
-    FastaiSaver.post_init(learner)
-    learner.to_distributed(torch.cuda.current_device())
-
-def ddpify_Learner_class():
-    if FastaiSaver.post_init is None:  # Intercept Learner.__post_init__() to append our own handler
-        FastaiSaver.post_init = Learner.__post_init__
-        Learner.__post_init__ = _post_init_DDP
-
-def restore_Learner_class():
-    if FastaiSaver.post_init is not None:
-        Learner.__post_init__ = FastaiSaver.post_init
-    FastaiSaver.post_init = None
-'''
-
 def silent_console(silent:bool=True):
     "Turn off console progress bar output."
     import fastai2.torch_core, fastai2.text.learner, fastai2.text.core, fastai2.callback.progress, fastai2.data.external

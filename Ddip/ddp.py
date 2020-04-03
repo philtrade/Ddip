@@ -36,7 +36,7 @@ def exit_group_single():
     '''Exit the current process from the PyTorch distributed process group.'''
     for i in ["RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "OMP_NUM_THREADS"]:
         os.environ.pop(i)
-    torch.distributed.destroy_process_group()
+    if torch.distributed.is_initialized(): torch.distributed.destroy_process_group()
     torch.cuda.empty_cache()
 
 def meminfo():

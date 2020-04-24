@@ -153,7 +153,7 @@ class Ddp():
         app_info = f"DDP application: {self._app.__name__ if self._app else 'None'}"
         return '\n'.join([cluster_info, ddp_info, app_info])
 
-    def init_cluster(self, n_engines:int=0): self.cluster = IppCluster(n=n_engines)
+    def init_cluster(self, n_engines:int=0, **kwargs): self.cluster = IppCluster(n=n_engines, **kwargs)
 
     @classmethod
     def shutdown(cls, self):
@@ -196,11 +196,11 @@ class Ddp():
 
     def gpus_str(self): return ','.join(map(str, self.ddp_group))
 
-    def new_group(self, gpus:List[int], appname:str=None, node_rank:int=0, world_size:int=0):
+    def new_group(self, gpus:List[int], appname:str=None, node_rank:int=0, world_size:int=0, **kwargs):
         '''Configure a torch distributed process group of GPUs on a ipyparallel cluster.
         Returns a list of GPU ids of the group formed.'''
         (n_gpu, n_device) = (len(gpus), torch.cuda.device_count())
-        if not self.cluster: self.init_cluster(n_engines=n_device)
+        if not self.cluster: self.init_cluster(n_engines=n_device, **kwargs)
         cl = self.cluster # shorthand
         assert n_gpu <= len(cl.client), f"More GPU ({gpus}) than ipyparallel engines ({len(cl.client)}). "
         assert max(gpus) < n_device, f"Invalid GPU id {max(gpus)}, highest allowed is {n_device-1}"

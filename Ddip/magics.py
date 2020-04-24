@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from torch.distributed import *
 from IPython.core.magic import Magics, magics_class, cell_magic, line_magic, line_cell_magic
 from IPython.core.display import clear_output
-from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
+from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring, kwds
 from ipyparallel import AsyncResult
 from .ddp import Ddp
 
@@ -76,6 +76,7 @@ class DdpMagic(Magics):
     @argument('-k', '--kill', dest='kill', action="store_const", const=True, help="Kill the ipyparallel cluster.")
     @argument('-i', '--info', dest='info', action="store_const", const=True, help="Show current configuration info.")
     @argument('-v', '--verbose', dest='verbose', nargs='?', type=str, const="True", choices=["True", "False"],help='print a message at each execution.')
+    @argument('-t', '--timeout', dest='timeout', type=int, help="timeout amount to wait for engines to connect.")
     @line_magic
     def makedip(self, line=''):
         '''%makedip -- Setup/tear down the cluster, a DDP training group on top of it, and an app client to the DDP. '''
@@ -95,7 +96,10 @@ class DdpMagic(Magics):
         if args.gpus:
             gpus = self.gpu_str2list(args.gpus)
             self.ddp.exit_group() # Exit old DDP group if exists
-            self.ddp.new_group(gpus=gpus, appname=args.appname)
+            if getattr(args, "timeout", None) is not None:
+                ddp_kwargs = { "engine_wait" : args.timeout}
+                print(f"Setting engine timeout to {args.timeout}", flush=True)
+            self.ddp.new_group(gpus=gpus, appname=args.appname, **ddp_kwargs)
             self.shell.run_line_magic("pxconfig", "--verbose" if Config.Verbose else "--no-verbose")        
 
     @magic_arguments()

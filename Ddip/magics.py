@@ -96,8 +96,9 @@ class DdpMagic(Magics):
         if args.gpus:
             gpus = self.gpu_str2list(args.gpus)
             self.ddp.exit_group() # Exit old DDP group if exists
+            ddp_kwargs = {}
             if getattr(args, "timeout", None) is not None:
-                ddp_kwargs = { "engine_wait" : args.timeout}
+                ddp_kwargs["engine_wait"]= args.timeout
                 print(f"Setting engine timeout to {args.timeout}", flush=True)
             self.ddp.new_group(gpus=gpus, appname=args.appname, **ddp_kwargs)
             self.shell.run_line_magic("pxconfig", "--verbose" if Config.Verbose else "--no-verbose")        

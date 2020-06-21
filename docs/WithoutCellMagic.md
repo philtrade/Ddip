@@ -1,5 +1,6 @@
 #### Rough idea of a multiprocess spawning context manager to facilitate on-demand DDP in jupyter notebook via function calls instead of relying on ipython cell magics.
 
+```code
 from multiprocess import Process  # use multiprocess, not python's multiprocessing, nor torch.multiprocessing.
 
 builder = lambda : learner_builder(path, ….) # state dict can be passed in here….
@@ -62,3 +63,5 @@ def init_process(rank, imports, builder_fn, trainer_fn):
 
   def exit():
     for p in processes: p.join()
+```
+

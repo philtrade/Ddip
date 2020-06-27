@@ -53,7 +53,7 @@ def mpify(fn):
     def _mpfunc(*args, _i:int=None, _g:int=None, _ws:int=None, setup_cleanup=_dummy_setup_cleanup, **kwargs):
         try:
             setup_cleanup(_i, _g, _ws)
-            r = fn(*args, **kwargs)
+            r = fn(*args, _i=_i, _g=_g, _ws=_ws, **kwargs)
             return r
         except Exception as e: raise Exception() from e
         finally:

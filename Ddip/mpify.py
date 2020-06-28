@@ -1,6 +1,6 @@
-import multiprocess as mp
+import os, inspect, multiprocess as mp
 from typing import Callable
-import os, inspect
+from contextlib import AbstractContextManager
 
 __all__ = ['import_star', 'rankify', 'distrib_launch', 'contextualize', 'TorchDistribContext']
 
@@ -19,7 +19,7 @@ def import_star(modules=[]):
             except Exception as e: raise ImportError(f"Failed to import module {mod}") from e
     finally: del cf   # Recommendation from https://docs.python.org/3/library/inspect.html#the-interpreter-stack
 
-def contextualize(fn, cm):
+def contextualize(fn:Callable, cm):
     "Return a function which will run `fn` in the context of `cm` the context manager object."
     def _cfn(*args, **kwargs):
         with cm: return fn(*args, **kwargs)
@@ -54,7 +54,7 @@ def rankify(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, 
         for k in ["WORLD_SIZE", "RANK", "LOCAL_RANK"]: os.environ.pop(k, None)
         for p in procs: p.join()
 
-class TorchDistribContext():
+class TorchDistribContext(AbstractContextManager):
     "A context manager to customize setup/teardown of pytorch distributed data parallel environment."
     def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads:int=1, **kwargs):
         self._a, self._p, self._nt = addr, port, num_threads
@@ -69,6 +69,8 @@ class TorchDistribContext():
 
     def __exit__(self, exc_type, exc_value, traceback):
         for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
+        import torch
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
         return exc_type is None
 
 def distrib_launch(nprocs, fn, *args, fn_ctx:TorchDistribContext=None, **kwargs):

@@ -2,7 +2,7 @@ import multiprocess as mp
 from typing import Callable
 import os, inspect
 
-__all__ = ['import_star', 'mp_ranked', 'mp_ddp', 'contextualize', 'TorchDistribContext']
+__all__ = ['import_star', 'rankify', 'distrib_launch', 'contextualize', 'TorchDistribContext']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -19,12 +19,13 @@ def import_star(modules=[]):
             except Exception as e: raise ImportError(f"Failed to import module {mod}") from e
     finally: del cf   # Recommendation from https://docs.python.org/3/library/inspect.html#the-interpreter-stack
 
-def contextualize(fn, fn_ctx):
+def contextualize(fn, cm):
+    "Return a function which will run `fn` in the context of `cm` the context manager object."
     def _cfn(*args, **kwargs):
-        with fn_ctx: return fn(*args, **kwargs)
+        with cm: return fn(*args, **kwargs)
     return _cfn
 
-def mp_ranked(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, fn_ctx=None, **kwargs):
+def rankify(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, fn_ctx=None, **kwargs):
     "Execute a function on ranked multiple processes (inlcuding parent process).  Works in interactive IPython/Jupyter notebook"
     assert nprocs > 0, ValueError("nprocs: # of processes to launch must be > 0")
     children_ranks = list(range(nprocs))
@@ -54,7 +55,7 @@ def mp_ranked(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0
         for p in procs: p.join()
 
 class TorchDistribContext():
-    "A context manager to setup/teardown the distributed data parallel in pytorch."
+    "A context manager to customize setup/teardown of pytorch distributed data parallel environment."
     def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads:int=1, **kwargs):
         self._a, self._p, self._nt = addr, port, num_threads
 
@@ -70,9 +71,9 @@ class TorchDistribContext():
         for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
         return exc_type is None
 
-def mp_ddp(nprocs, fn, *args, fn_ctx:TorchDistribContext=None, **kwargs):
+def distrib_launch(nprocs, fn, *args, fn_ctx:TorchDistribContext=None, **kwargs):
     "Convenience multiproc launcher for torch distributed data parallel setup, accept customized TorchDistribContext object."
     if fn_ctx is None: fn_ctx = TorchDistribContext()
-    return mp_ranked(nprocs, fn, *args, fn_ctx=fn_ctx, **kwargs)
+    return rankify(nprocs, fn, *args, fn_ctx=fn_ctx, **kwargs)
 
     

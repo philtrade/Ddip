@@ -18,76 +18,60 @@ def import_star(modules=[]):
     g.update(new_imports)
 
 def mplaunch(nprocs:int, fn:Callable, *args, rank0_parent:bool=True, host_rank:int=0, **kwargs):
-    '''
-    A multiprocess function launcher that works in IPython/Jupyter notebook.
-    Local rank, host rank, and world size are passed in as keyword arguments: `_i, _g, and _ws`.
-    '''
+    "A multiprocess function launcher that works in interactive IPython/Jupyter notebook"
     assert nprocs > 0, ValueError("nprocs: # of processes to launch must be > 0")
     procs = []
     start = 1 if rank0_parent is True else 0
     ctx = mp.get_context("spawn")
-      
+
     try:
+        os.environ["WORLD_SIZE" ], base_rank = str(nprocs), host_rank * nprocs
         for rank in range(start, nprocs):
-            kwargs.update({'_i':rank, '_g':rank+host_rank*nprocs, '_ws': nprocs})
+            os.environ["LOCAL_RANK"] = str(rank)
+            os.environ["RANK"] = str(rank + base_rank)
             p = ctx.Process(target=fn, args=args, kwargs=kwargs)
             procs.append(p)
             p.start()
 
-        if rank0_parent: # use current process as rank-0 to execute the function
-              kwargs.update({'_i':0, '_g':0 + host_rank*nprocs, '_ws': nprocs})
-              r = fn(*args, **kwargs)
-        else: r = procs                            
-        return r
+        # execute the function in current process as rank-0 
+        os.environ["LOCAL_RANK"], os.environ["RANK"]= str(0), str(0 + base_rank)
+        return fn(*args, **kwargs) if rank0_parent else procs
+
     except Exception as e:
         raise Exception(e) from e
     finally:
         for p in procs: p.join()
-    
-class _null_ctx(nullcontext): # "Null context whose constructor ignores input parameters"
-    def __init__(self, *args, **kwargs): super().__init__()
-    
+
 def mpify(fn):
     "Decorator to convert a function to run by mplaunch, with a pre-setup, post-cleanup routine."
-    def _mpfunc_with_rank(*args, _i:int=None, _g:int=None, _ws:int=None, rank_ctx:Callable=_null_ctx, **kwargs):
-        with rank_ctx(local_rank=_i, global_rank=_g, world_size=_ws) as c:
-            r = fn(*args, **kwargs)
-            return r
+    def _mpfunc_with_rank(*args, rank_ctx:Callable=nullcontext(), **kwargs):
+        with rank_ctx: return fn(*args, **kwargs)
     return _mpfunc_with_rank
 
 class TorchDistribContext():
     "A context manager to setup/teardown the distributed data parallel in pytorch."
-    
-    def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads=1, **kwargs):
-        "Set up group-wide communication.  Per process rank info can be customized in __call__()"
-        self._addr, self._port, self._num_threads = addr, port, num_threads
-        self._i, self._g, self._ws = None, None, None
+    all_keys = ["LOCAL_RANK", "RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]
+    def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads:int=1, **kwargs):
+        self.addr = os.environ["MASTER_ADDR"] = addr
+        os.environ["MASTER_PORT"] = str(port)
+        os.environ["OMP_NUM_THREADS"] = str(num_threads) # See https://github.com/pytorch/pytorch/pull/22501
 
-    def __call__(self, local_rank:int, global_rank:int, world_size:int, *args, **kwargs):
-        "Allow runtime dynamic setting of ranks and world size in a `with`-statement."
-        self._i, self._g, self._ws = local_rank, global_rank, world_size
-        return self
-        
     def __enter__(self):
         import torch
-        os.environ["LOCAL_RANK"] = str(self._i)
-        os.environ["RANK"] = str(self._g)
-        os.environ["WORLD_SIZE" ] = str(self._ws)
-        os.environ["MASTER_ADDR"] = self._addr
-        os.environ["MASTER_PORT"] = str(self._port)
-        os.environ["OMP_NUM_THREADS"] = str(self._num_threads) # See https://github.com/pytorch/pytorch/pull/22501
-        print(f"Entering: local_rank {self._i}, rank {self._g}, ws {self._ws}, addr {self._addr}, port {self._port}, num_threads {self._num_threads}")
+        print(f"{self.__class__}.__enter__(): {[os.environ[k] for k in self.all_keys]}")
         if torch.cuda.is_available():
             torch.cuda.set_device(int(os.environ.get('LOCAL_RANK', 0)))
         # should torch.cuda.initialize_distributed_group() go here?
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        for k in ["LOCAL_RANK", "RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]:
+        for k in self.all_keys:
             if k in os.environ: del os.environ[k]
         return exc_type is None
 
-def ddplaunch(nprocs, fn, *args, rank_ctx=TorchDistribContext(), **kwargs):
+def ddplaunch(nprocs, fn, *args, rank_ctx=None, **kwargs):
+    if rank_ctx is None: rank_ctx = TorchDistribContext()
+    "Convenience multiproc launcher for torch distributed data parallel setup, accept customized TorchDistribContext object."
     return mplaunch(nprocs, mpify(fn), *args, rank_ctx=rank_ctx, **kwargs)
 
     

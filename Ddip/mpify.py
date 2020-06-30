@@ -2,7 +2,7 @@ import os, inspect, multiprocess as mp
 from typing import Callable
 from contextlib import AbstractContextManager
 
-__all__ = ['import_star', 'ranch', 'TorchDistribContext',]
+__all__ = ['import_star', 'ranch', 'TorchDistribContext','import_named_funcs']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -25,6 +25,13 @@ def _contextualize(fn:Callable, cm:AbstractContextManager):
     def _cfn(*args, **kwargs):
         with cm: return fn(*args, **kwargs)
     return _cfn
+
+def import_named_funcs(fns):
+    "Import a list of named functions into the caller's globals namespace.  To import a lambda, assign to a variable and import that."
+    _frame = inspect.currentframe().f_back
+    ns = _frame.f_globals
+    for f in fns: ns[f.__name__] = f
+    del _frame
 
 def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ctx=None, **kwargs):
     "Launch a function among a group of ranked processes.  Parent process can participate.  Works in interactive IPython/Jupyter notebook"

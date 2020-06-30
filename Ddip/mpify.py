@@ -2,7 +2,7 @@ import os, inspect, multiprocess as mp
 from typing import Callable
 from contextlib import AbstractContextManager
 
-__all__ = ['import_star', 'ranch', 'TorchDistribContext', 'torchddp_launch']
+__all__ = ['import_star', 'ranch', 'TorchddpCtx', 'torchddp_launch']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -21,13 +21,16 @@ def import_star(modules=[]):
         del cf   # Recommendation from https://docs.python.org/3/library/inspect.html#the-interpreter-stack
 
 def _contextualize(fn:Callable, cm:AbstractContextManager):
-    "Wraps a function to be executed within a context manager."
+    "Wrap a context manager around a function's execution."
     def _cfn(*args, **kwargs):
         with cm: return fn(*args, **kwargs)
     return _cfn
 
 def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ctx=None, **kwargs):
-    "Launch a function among a group of ranked processes.  Parent process can participate.  Works in interactive IPython/Jupyter notebook"
+    '''Launch `fn(*args, **kwargs)` to `nprocs` spawned processes. Local rank, global rank (multiple hosts),
+       and world size are set in os.environ['LOCAL_RANK','RANK','WORLD_SIZE'] respectively.
+       Parent process can participate as rank_{parent_rank}.
+       Can optionally apply a context manager `ctx` around `fn(...)`.'''
     assert nprocs > 0, ValueError("nprocs: # of processes to launch must be > 0")
     children_ranks = list(range(nprocs))
     if parent_rank is not None:
@@ -55,8 +58,8 @@ def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ct
         for k in ["WORLD_SIZE", "RANK", "LOCAL_RANK"]: os.environ.pop(k, None)
         for p in procs: p.join()
 
-class TorchDistribContext(AbstractContextManager):
-    "A context manager to setup/teardown of pytorch DDP entering/exiting a `with` clause."
+class TorchddpCtx(AbstractContextManager):
+    "Setup/teardown Torch DDP when entering/exiting a `with` clause."
     import torch
     def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads:int=1, **kwargs):
         self._a, self._p, self._nt = addr, port, num_threads
@@ -80,6 +83,6 @@ class TorchDistribContext(AbstractContextManager):
         for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
         return exc_type is None
 
-def torchddp_launch(*args, ctx=None, **kwargs):
-    "Convenience routine to launch a function to run in Torch DDP."
-    return ranch(*args, ctx = TorchDistribContext() if ctx is None else ctx, **kwargs)
+def torchddp_launch(nprocs:int, fn:Callable, *args, ctx:TorchddpCtx=None, **kwargs):
+    "Launch `fn(*args, **kwargs)` in Torch DDP group of `nprocs` processes.  Can customize the TorchddpCtx context."
+    return ranch(nprocs, fn, *args, ctx = TorchddpCtx() if ctx is None else ctx, **kwargs)

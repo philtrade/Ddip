@@ -2,7 +2,7 @@ import os, inspect, multiprocess as mp
 from typing import Callable
 from contextlib import AbstractContextManager
 
-__all__ = ['import_star', 'ranch', 'TorchDistribContext','import_named_objs']
+__all__ = ['import_star', 'ranch', 'TorchDistribContext']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -26,16 +26,6 @@ def _contextualize(fn:Callable, cm:AbstractContextManager):
         with cm: return fn(*args, **kwargs)
     return _cfn
 
-def import_named_objs(objs:[object]):
-    "Import a list of named objects into the caller's globals namespace.  To import a lambda, assign to a variable and import that."
-    _frame = inspect.currentframe().f_back
-    ns = _frame.f_globals
-    for f in objs:
-        try: ns[f.__name__] = f
-        except AttributeError as e:
-            raise AttributeError(f'Cannot import object "{f}" without __name__') from e
-    del _frame
-
 def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ctx=None, **kwargs):
     "Launch a function among a group of ranked processes.  Parent process can participate.  Works in interactive IPython/Jupyter notebook"
     assert nprocs > 0, ValueError("nprocs: # of processes to launch must be > 0")
@@ -55,8 +45,7 @@ def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ct
             procs.append(p)
             p.start()
 
-        # execute the function in current process as rank-{parent_rank}
-        if parent_rank is not None:
+        if parent_rank is not None: # also run it in current process at a rank
             os.environ.update({"LOCAL_RANK":str(parent_rank), "RANK":str(parent_rank + base_rank)})
             return fn(*args, **kwargs)
         else: return procs

@@ -2,7 +2,7 @@ import os, inspect, multiprocess as mp
 from typing import Callable
 from contextlib import AbstractContextManager
 
-__all__ = ['import_star', 'ranch', 'TorchDistribContext','import_named_funcs']
+__all__ = ['import_star', 'ranch', 'TorchDistribContext','import_named_objs']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -26,11 +26,14 @@ def _contextualize(fn:Callable, cm:AbstractContextManager):
         with cm: return fn(*args, **kwargs)
     return _cfn
 
-def import_named_funcs(fns):
-    "Import a list of named functions into the caller's globals namespace.  To import a lambda, assign to a variable and import that."
+def import_named_objs(objs:[object]):
+    "Import a list of named objects into the caller's globals namespace.  To import a lambda, assign to a variable and import that."
     _frame = inspect.currentframe().f_back
     ns = _frame.f_globals
-    for f in fns: ns[f.__name__] = f
+    for f in objs:
+        try: ns[f.__name__] = f
+        except AttributeError as e:
+            raise AttributeError(f'Cannot import object "{f}" without __name__') from e
     del _frame
 
 def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ctx=None, **kwargs):

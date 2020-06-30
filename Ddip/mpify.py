@@ -2,7 +2,7 @@ import os, inspect, multiprocess as mp
 from typing import Callable
 from contextlib import AbstractContextManager
 
-__all__ = ['import_star', 'ranch', 'TorchDistribContext']
+__all__ = ['import_star', 'ranch', 'TorchDistribContext', 'torchddp_launch']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -21,7 +21,7 @@ def import_star(modules=[]):
         del cf   # Recommendation from https://docs.python.org/3/library/inspect.html#the-interpreter-stack
 
 def _contextualize(fn:Callable, cm:AbstractContextManager):
-    "Wraps a function within a context manager.."
+    "Wraps a function to be executed within a context manager."
     def _cfn(*args, **kwargs):
         with cm: return fn(*args, **kwargs)
     return _cfn
@@ -38,36 +38,48 @@ def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ct
     procs = []
     try:
         os.environ["WORLD_SIZE" ], base_rank = str(nprocs), host_rank * nprocs
-        if ctx is not None: fn = _contextualize(fn, ctx)
+        target_fn = _contextualize(fn, ctx) if ctx else fn
+
         for rank in children_ranks:
             os.environ.update({"LOCAL_RANK":str(rank), "RANK":str(rank + base_rank)})
-            p = multiproc_ctx.Process(target=fn, args=args, kwargs=kwargs)
+            p = multiproc_ctx.Process(target=target_fn, args=args, kwargs=kwargs)
             procs.append(p)
             p.start()
 
         if parent_rank is not None: # also run it in current process at a rank
             os.environ.update({"LOCAL_RANK":str(parent_rank), "RANK":str(parent_rank + base_rank)})
-            return fn(*args, **kwargs)
+            return target_fn(*args, **kwargs)
         else: return procs
     except Exception as e: raise Exception(e) from e
     finally:
         for k in ["WORLD_SIZE", "RANK", "LOCAL_RANK"]: os.environ.pop(k, None)
         for p in procs: p.join()
 
-import torch
 class TorchDistribContext(AbstractContextManager):
-    "A context manager to customize setup/teardown of pytorch distributed data parallel environment."
+    "A context manager to setup/teardown of pytorch DDP entering/exiting a `with` clause."
+    import torch
     def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads:int=1, **kwargs):
         self._a, self._p, self._nt = addr, port, num_threads
+        self._myddp, self._backend = False, 'gloo' # default to CPU backend
 
     def __enter__(self):
         os.environ.update({"MASTER_ADDR":self._a, "MASTER_PORT":str(self._p),
                            "OMP_NUM_THREADS":str(self._nt)})
-        if torch.cuda.is_available(): torch.cuda.set_device(int(os.environ.get('LOCAL_RANK', 0)))
-        # should torch.cuda.initialize_distributed_group() go here?
+        if torch.cuda.is_available():
+            torch.cuda.set_device(int(os.environ.get('LOCAL_RANK', 0)))
+            self._backend = 'nccl'
+        if not torch.distributed.is_initialized():
+            print(f"rank[{os.environ['LOCAL_RANK']}] proc {os.getpid()} Initializing torch DDP: world size: {os.environ['WORLD_SIZE']}, backend: {self._backend}", flush=True)
+            torch.distributed.init_process_group(backend=self._backend, init_method='env://')
+            self._myddp = torch.distributed.is_initialized()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
+        if self._myddp: torch.distributed.destroy_process_group()
         if torch.cuda.is_available(): torch.cuda.empty_cache()
+        for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
         return exc_type is None
+
+def torchddp_launch(*args, ctx=None, **kwargs):
+    "Convenience routine to launch a function to run in Torch DDP."
+    return ranch(*args, ctx = TorchDistribContext() if ctx is None else ctx, **kwargs)

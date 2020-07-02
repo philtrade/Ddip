@@ -81,15 +81,16 @@ To this:
 
 ### A few technicalities when using `mpify`:
 #### At the functions, objects, namespace level:
-- Functions and lambdas defined locally **within** the Jupyter notebook can be passed to spawned children processes, thanks to the excellent [`multiprocess` libray](https://github.com/uqfoundation/multiprocess), an actively supported alternative to Python's default `multiprocessing` and `torch.multiprocessing`.  Simply list them as target function parameters.
+
+- Thanks to the excellent [`multiprocess` libray](https://github.com/uqfoundation/multiprocess), functions and lambdas defined locally **within** the Jupyter notebook can be passed to spawned children processes. `multiprocess` is an actively supported alternative to Python's default `multiprocessing` and `torch.multiprocessing`.
 
 #### At the process level:
 
-- In each process, generic distributed attributes such as *local rank*, *global rank*, *world size* will be passed to `os.environ` dictionary as `LOCAL_RANK, RANK, and WORLD_SIZE` (note: values are strings, not integers in `os.environ`).  Their definitions follow the PyTorch's [distributed data parallel convention](https://discuss.pytorch.org/t/what-is-the-difference-between-rank-and-local-rank/61940).
+- In each process, generic distributed attributes of *local rank*, *global rank*, *world size* are available in the `os.environ[LOCAL_RANK, RANK, and WORLD_SIZE]` respectively as strings (not integers).  They follow the PyTorch definition in [distributed data parallel convention](https://discuss.pytorch.org/t/what-is-the-difference-between-rank-and-local-rank/61940).
 
-- The interactive Jupyter session itself participates as rank-0 process by default.  Because it runs in the foreground, user can use widgets such as `tqdm` and `fastprogress` to visualize the function progress.
+- The foreground Jupyter session participates as rank-0 process by default, but it's not mandatory. If it does, user can use widgets such as `tqdm` and `fastprogress` to visualize the function progress.  It will also receive the whatever target function returns.
 
-- Upon completion, the Jupyter process can receive whatever the function returns from this rank's execution, but `return`s from the spawned processes are **discarded**.  Gathering results using `multiprocess.Queue` or `shared_memory` isn't supported in `mpify` yet, but would be a good exercise for the existing context manager mechanism described below.
+- `return`s from the spawned processes are **discarded**.  Gathering results using `multiprocess.Queue` or `shared_memory` or any fancy shmmmancy IPC isn't supported in `mpify` yet, but would be a good exercise for the existing context manager described below.
 
 
 #### Resources mangement using custom context manager `ranch(... ctx=Blah ...)`:

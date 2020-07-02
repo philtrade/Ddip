@@ -12,7 +12,7 @@
   * A helper `mpify.import_star()` to handle `from X import *` within a function --- *a usage banned by Python*.
   * In-n-out execution model: *spin-up -> execute -> spin-down & terminate* within a single call of `ranch()`.  The Jupyter session is the *parent process*, it spins up and down children processes.
   * Process rank [`0..N-1`] and the group size `N` are stored in `os.environ`.  **The parent Jupyter process can participate, and it does by default as the rank-`0` process**, and it will receive the return value of target function run as rank-`0`.
-  * User can provide a context manager to wrap around the target function execution: to manage resources and setup/teardown execution environment etc.. `mpify` provides `TorchDDPCtx` to illustrate the setup/tear-down of PyTorch's distributed data parallel training..
+  * User can write custom context manager to wrap around the call to the target function in the spawned processes.  As an example, `mpify` provides `TorchDDPCtx` to run the target in PyTorch's distributed data parallel mode.
 
 #### Example: Adapting [the `fastai v2`notebook on training `imagenette`](https://github.com/fastai/course-v4/blob/master/nbs/07_sizing_and_tta.ipynb) to run on multiple GPUs within the interactive session.  From:
 
@@ -24,7 +24,9 @@ To this:
 
 ### Usage 
 
-  * Say the notebook has defined function `foo()` or `objectA`, and `myfunc()` needs them.  To adapt `myfunc()` to run on multiple processes within the notebook, make two changes, so that all the resources `myfunc()` needs are accessible when it's called:
+To adapt a function `myfunc()` to be both single process/multiprocess friendly within the notebook, make two changes, so that all the resources `myfunc()` needs are accessible when it's called.
+  
+Say the notebook has defined function `foo()` or `objectA`, and `myfunc()` uses them:
   
   1. First, pass `foo` and `objectA` as parameters of `myfunc()`:
   
@@ -38,11 +40,10 @@ To this:
   E.g.: Originally the notebook may have the following:
   ```python
     # At the notebook beginning:
-    from utils import *
-    from fancy import *
+    from utils import *                # starred import
     import numpy as np
     import torch
-    from torch.distributed import *
+    from fastai2.distributed import *  # more starred import
     
     # some cells later
     def foo():
@@ -57,15 +58,14 @@ To this:
         ...
   ```
     
-  To adapt `myfunc()` to be multiprocess-friendly, one can write:
+  To adapt it, one can write:
   
   ```python
     def myfunc(arg1, ..., foo, objectA, ...):
-        from Mpify import import_star      # Helper to handle "from X import *" syntax
-        import_star(['utils', 'fancy'])
-        import numpy as np                 # Imports earlier in notebook are copied here.
-        import torch
-        import_star(['torch.distributed'])
+        import mpify
+        mpify.import_star(['utils', 'fastai2.distributed']) # Helper to handle "from X import *"
+        import numpy as np                       
+        import torch                         # Other imports earlier in notebook are copied here
         
         x = np.array([objectA])
         foo(x)
@@ -73,10 +73,10 @@ To this:
         if os.environ.get('RANK', '0') == '0': return f"Rank-0 process returning"
   ```
 
-  3. Launch it to 5 ranked processes:
+  Then launch it away to 5 ranked processes using `mpify.ranch()`
   ```python
     import mpify
-    r = mypify.ranch(5, myfunc, arg1, foo, objectA)
+    r = mpify.ranch(5, myfunc, arg1, foo, objectA)
   ```
 
 ### A few technicalities when using `mpify`:

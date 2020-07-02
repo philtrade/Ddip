@@ -3,7 +3,7 @@ from typing import Callable
 from contextlib import AbstractContextManager
 import torch
 
-__all__ = ['import_star', 'ranch', 'TorchDDPCtx', 'torchddp_launch']
+__all__ = ['import_star', 'ranch', 'TorchDDPCtx', 'in_torchddp']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -38,7 +38,8 @@ def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ct
         assert 0 <= parent_rank < nprocs, ValueError(f"Out of range parent_rank:{parent_rank}, must be 0 <= parent_rank < {nprocs}")
         children_ranks.pop(parent_rank)
 
-    multiproc_ctx = mp.get_context("spawn")
+    multiproc_ctx = mp.get_context("forkserver")
+
     procs = []
     try:
         os.environ["WORLD_SIZE" ], base_rank = str(nprocs), host_rank * nprocs
@@ -83,6 +84,6 @@ class TorchDDPCtx(AbstractContextManager):
         for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
         return exc_type is None
 
-def torchddp_launch(nprocs:int, fn:Callable, *args, ctx:TorchDDPCtx=None, **kwargs):
+def in_torchddp(nprocs:int, fn:Callable, *args, ctx:TorchDDPCtx=None, **kwargs):
     "Launch `fn(*args, **kwargs)` in Torch DDP group of `nprocs` processes.  Can customize the TorchddpCtx context."
     return ranch(nprocs, fn, *args, ctx = TorchDDPCtx() if ctx is None else ctx, **kwargs)

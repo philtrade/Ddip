@@ -36,7 +36,7 @@ To this:
   2. Second, import modules that `myfunc()` needs at the top, because `myfunc()` will be run on a clean, fresh Python interpreter process.  To handle `from X import *`, use `mpify.import_star(['X'])`:
   
   E.g.: Originally the notebook may have the following:
-  ```
+  ```python
     # At the notebook beginning:
     from utils import *
     from fancy import *
@@ -51,16 +51,16 @@ To this:
     # and later
     objectA = 100
     
-    def func_happy_as_single_process(arg1): #
+    def myfunc(arg1): #
         x = np.array([objectA])
         foo(x)
         ...
   ```
     
-  To adapt `func_happy_as_single_process` to be multiprocess-friendly, one can write:
+  To adapt `myfunc()` to be multiprocess-friendly, one can write:
   
   ```python
-    def new_func(arg1, foo, objectA **kwargs):
+    def myfunc(arg1, ..., foo, objectA, ...):
         from Mpify import import_star      # Helper to handle "from X import *" syntax
         import_star(['utils', 'fancy'])
         import numpy as np                 # Imports earlier in notebook are copied here.
@@ -76,7 +76,7 @@ To this:
   3. Launch it to 5 ranked processes:
   ```python
     import mpify
-    r = mypify.ranch(5, new_func, arg1, foo, objectA)
+    r = mypify.ranch(5, myfunc, arg1, foo, objectA)
   ```
 
 ### A few technicalities when using `mpify`:

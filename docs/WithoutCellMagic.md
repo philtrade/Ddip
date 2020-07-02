@@ -10,9 +10,9 @@
 ###  Main Features
   * Functions and objects defined in the same notebook can ride along via the target function's input parameter list --- *a feature not available from the current Python `multiprocessing` or `torch.multiprocessing`*.
   * A helper `mpify.import_star()` to handle `from X import *` within a function --- *a usage banned by Python*.
-  * In-n-out execution model: *spin-up -> execute -> spin-down & terminate* within a single call of `ranch()`.  The Jupyter session is the *parent process*, it spins up and down children processes.
-  * Process rank [`0..N-1`] and the group size `N` are stored in `os.environ`.  **The parent Jupyter process can participate, and it does by default as the rank-`0` process**, and it will receive the return value of target function run as rank-`0`.
-  * User can write custom context manager to wrap around the call to the target function in the spawned processes.  As an example, `mpify` provides `TorchDDPCtx` to run the target in PyTorch's distributed data parallel mode.
+  * In-n-out execution model: *spin-up -> execute -> spin-down & terminate* within a single api call.  The Jupyter session is the *parent process*, it spins up and down children processes.
+  * Worker process ranks [`0..N-1`] and the group size `N` are stored in each's `os.environ`.  **The parent Jupyter process can participate as a worker -- it does by default as rank-`0`** -- and it will receive whatever rank-`0` target function returns.
+  * User can write custom context manager to wrap around the target in the spawned processes.  As an example, `mpify` provides `TorchDDPCtx` to run the target in PyTorch's distributed data parallel mode.
 
 #### Example: Adapting [the `fastai v2`notebook on training `imagenette`](https://github.com/fastai/course-v4/blob/master/nbs/07_sizing_and_tta.ipynb) to run on multiple GPUs within the interactive session.  From:
 

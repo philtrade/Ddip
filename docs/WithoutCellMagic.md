@@ -19,11 +19,11 @@ To this:
 
 ###  Main features
   * Functions and objects defined in the same notebook can ride along via the target function's input parameter list --- *a feature not available from the current Python `multiprocessing` or `torch.multiprocessing`*.
-  * A helper `Mpify.import_star()` to handle `from X import *` within a function --- *a usage banned by Python*.
+  * A helper `mpify.import_star()` to handle `from X import *` within a function --- *a usage banned by Python*.
   * In-n-out execution model: *spin-up -> execute -> spin-down & terminate* within a single call of `ranch()`.  The Jupyter session is the *parent process*, it spins up and down children processes.
   * Process rank [`0..N-1`] and the group size `N` are stored in `os.environ`.  **The parent Jupyter process can participate, and it does by default as the rank-`0` process**, and it will receive the return value of target function run as rank-`0`.
 
-  * User can provide a context manager to wrap around the target function execution: to manage resources and setup/teardown execution environment etc.. `Mpify` provides `TorchDDPCtx` to illustrate the setup/tear-down of PyTorch's distributed data parallel training..
+  * User can provide a context manager to wrap around the target function execution: to manage resources and setup/teardown execution environment etc.. `mpify` provides `TorchDDPCtx` to illustrate the setup/tear-down of PyTorch's distributed data parallel training..
 
 **Mpify** was conceived to overcome the many quirks of *getting Python multiprocess x Jupyter x multiple CUDA GPUs on {Windows or Unix}* to cooperate. <include link to blog when available>
 
@@ -95,7 +95,7 @@ To this:
 
 - The interactive Jupyter session itself participates as rank-0 process by default.  Because it runs in the foreground, user can use widgets such as `tqdm` and `fastprogress` to visualize the function progress.
 
-- Upon completion, the Jupyter process can receive whatever the function returns from this rank's execution, but `return`s from the spawned processes are **discarded**.  Gathering results using `multiprocess.Queue` or `shared_memory` isn't supported in `mpify` yet, but would be a good exercise to try it using the existing context manager mechanism described below.
+- Upon completion, the Jupyter process can receive whatever the function returns from this rank's execution, but `return`s from the spawned processes are **discarded**.  Gathering results using `multiprocess.Queue` or `shared_memory` isn't supported in `mpify` yet, but would be a good exercise for the existing context manager mechanism described below.
 
 
 #### Resources mangement using custom context manager `ranch(... ctx=Blah ...)`:

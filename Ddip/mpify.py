@@ -1,8 +1,9 @@
 import os, inspect, multiprocess as mp
 from typing import Callable
 from contextlib import AbstractContextManager
+import torch
 
-__all__ = ['import_star', 'ranch', 'TorchddpCtx', 'torchddp_launch']
+__all__ = ['import_star', 'ranch', 'TorchDDPCtx', 'torchddp_launch']
 
 def import_star(modules=[]):
     "Apply `from module import '*'` into caller's frame from a list of modules."
@@ -58,9 +59,8 @@ def ranch(nprocs:int, fn:Callable, *args, parent_rank:int=0, host_rank:int=0, ct
         for k in ["WORLD_SIZE", "RANK", "LOCAL_RANK"]: os.environ.pop(k, None)
         for p in procs: p.join()
 
-class TorchddpCtx(AbstractContextManager):
+class TorchDDPCtx(AbstractContextManager):
     "Setup/teardown Torch DDP when entering/exiting a `with` clause."
-    import torch
     def __init__(self, *args, addr:str="127.0.0.1", port:int=29500, num_threads:int=1, **kwargs):
         self._a, self._p, self._nt = addr, port, num_threads
         self._myddp, self._backend = False, 'gloo' # default to CPU backend
@@ -83,6 +83,6 @@ class TorchddpCtx(AbstractContextManager):
         for k in ["MASTER_ADDR", "MASTER_PORT", "OMP_NUM_THREADS"]: os.environ.pop(k, None)
         return exc_type is None
 
-def torchddp_launch(nprocs:int, fn:Callable, *args, ctx:TorchddpCtx=None, **kwargs):
+def torchddp_launch(nprocs:int, fn:Callable, *args, ctx:TorchDDPCtx=None, **kwargs):
     "Launch `fn(*args, **kwargs)` in Torch DDP group of `nprocs` processes.  Can customize the TorchddpCtx context."
-    return ranch(nprocs, fn, *args, ctx = TorchddpCtx() if ctx is None else ctx, **kwargs)
+    return ranch(nprocs, fn, *args, ctx = TorchDDPCtx() if ctx is None else ctx, **kwargs)

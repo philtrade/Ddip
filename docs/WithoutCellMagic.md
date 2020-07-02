@@ -5,28 +5,22 @@
 
 ### Overview 
 
-**`mpify`** is an simple API to run function (the "target function") on a group of *ranked* processes, and is designed work in Jupyter/IPython.  User can pass functions and objects defined in the notebook to the target function, and the Jupyter process can participate in the group as the rank-0 process.
-
-User can customize/enrich its default simplistic behavior with custom context manager, e.g. to manage resources, distribute/collect results in rank-0 process, etc.
-
-E.g. Adapting [the `fastai v2`notebook on training `imagenette`](https://github.com/fastai/course-v4/blob/master/nbs/07_sizing_and_tta.ipynb) to run on multiple GPUs within the interactive session.  From:
-
-<img src="/images/imagenette_07_orig.png" height="450">
-
-To this:
-
-<img src="/images/imagenette_07_mpified.png" height="400">
-
-###  Main features
+**`mpify`** is an simple API to run function (the "target function") on a group of *ranked* processes, and is designed work in Jupyter/IPython.
+ 
+###  Main Features
   * Functions and objects defined in the same notebook can ride along via the target function's input parameter list --- *a feature not available from the current Python `multiprocessing` or `torch.multiprocessing`*.
   * A helper `mpify.import_star()` to handle `from X import *` within a function --- *a usage banned by Python*.
   * In-n-out execution model: *spin-up -> execute -> spin-down & terminate* within a single call of `ranch()`.  The Jupyter session is the *parent process*, it spins up and down children processes.
   * Process rank [`0..N-1`] and the group size `N` are stored in `os.environ`.  **The parent Jupyter process can participate, and it does by default as the rank-`0` process**, and it will receive the return value of target function run as rank-`0`.
-
   * User can provide a context manager to wrap around the target function execution: to manage resources and setup/teardown execution environment etc.. `mpify` provides `TorchDDPCtx` to illustrate the setup/tear-down of PyTorch's distributed data parallel training..
 
-**Mpify** was conceived to overcome the many quirks of *getting Python multiprocess x Jupyter x multiple CUDA GPUs on {Windows or Unix}* to cooperate. <include link to blog when available>
+#### Example: Adapting [the `fastai v2`notebook on training `imagenette`](https://github.com/fastai/course-v4/blob/master/nbs/07_sizing_and_tta.ipynb) to run on multiple GPUs within the interactive session.  From:
 
+<img src="/images/imagenette_07_orig.png" height="270">
+
+To this:
+
+<img src="/images/imagenette_07_mpified.png" height="320">
 
 ### Usage 
 
@@ -127,6 +121,9 @@ More notebook examples may come along in the future.
 
 
 References:
+
+**`mpify`** was conceived to overcome the many quirks when  {Python multiprocess, Jupyter, multiple CUDA GPUs, Windows or Unix} meet, without mucking around with complicated cluster setup and . <include link to blog when available>
+
 * General structure follows https://pytorch.org/tutorials/intermediate/dist_tuto.html and https://pytorch.org/docs/stable/notes/multiprocessing.html
 * On using `multiprocess` instead of `multiprocessing` and `torch.multiprocessing`: https://hpc-carpentry.github.io/hpc-python/06-parallel/ 
 * On `from module import *` within a function: https://stackoverflow.com/questions/41990900/what-is-the-function-form-of-star-import-in-python-3

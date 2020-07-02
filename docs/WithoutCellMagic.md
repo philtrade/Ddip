@@ -112,16 +112,19 @@ To this:
   
   spawn -> [**set target GPU (initialize GPU context if not already) and DDP**]-> run function -> [**cleanup DDP**] -> terminate.
 
-- Either pass a custom `TorchDDPCtx` object to `mpify.ranch()`, or use the convenience routine `mpify.torchddp_launch()`.  The two are equivalent below:
+- Either pass a custom `TorchDDPCtx` object to `mpify.ranch()`, or use the convenience routine `mpify.in_torchddp()`.  The two are equivalent below:
 
 ```python
     # lazy, just use the default TorchDDPCtx() setting
-    result = torchddp_launch(world_size, create_and_train_model, *args, kwargs*)`
+    result = in_torchddp(world_size, create_and_train_model, *args, kwargs*)`
 
     # or more explicit, can be your own context manager:
 
     result = ranch(world_size, create_and_train_model, *args, ctx=TorchDDPCtx(), kwargs*)
  ```
+
+More notebook examples may come along in the future.
+
 
 References:
 * General structure follows https://pytorch.org/tutorials/intermediate/dist_tuto.html and https://pytorch.org/docs/stable/notes/multiprocessing.html

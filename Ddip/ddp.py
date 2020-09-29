@@ -214,7 +214,7 @@ class Ddp():
 
         # ipyparallel client[] accepts list of ints as slice indices.
         cl.px_view = cl.client[gpus]
-        cl.px_view.execute(f'from {__name__} import join_group_single, exit_group_single, meminfo, freemem')
+        cl.px_view.execute(f'from {__name__} import join_group_single, exit_group_single, meminfo, freemem', block=True)
         cl.px_view.execute('r = join_group_single(g_rank=g_rank, l_rank=l_rank, gpu=gpu, ws=ws)', block=True)
         print_verbose("Local Ranks initialized: ", [ f"GPU{k}={v}" for k, v in cl.px_view.pull('r').get_dict().items()])
         self.ddp_group = gpus

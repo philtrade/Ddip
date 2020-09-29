@@ -15,7 +15,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=['Ddip'],
-    install_requires=['fastai', 'torch',
+    install_requires=['fastai==1.*', 'torch',
         'ipyparallel!=6.2.5',  # ipyparallel 6.2.5 has a bug: https://github.com/ipython/ipyparallel/issues/408
     ],
     classifiers=[

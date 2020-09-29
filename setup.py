@@ -17,7 +17,6 @@ setuptools.setup(
     packages=['Ddip'],
     install_requires=['fastai', 'torch',
         'ipyparallel!=6.2.5',  # ipyparallel 6.2.5 has a bug: https://github.com/ipython/ipyparallel/issues/408
-        'pillow<7'  # pillow 7 is incompatible with fastai v1
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
